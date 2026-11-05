@@ -100,6 +100,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             pages.push(page);
         }
     }
+
+    let state_file = state_file().unwrap();
+    println!("{}", state_file.to_string_lossy());
+
+
     let subcommand = std::env::args().nth(1);
     match subcommand {
         Some(cmd) => process_subcommand(&cmd),
@@ -108,4 +113,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(())
         }
     }
+}
+
+fn state_file() -> Option<PathBuf> {
+    if let Some(config_env) = std::env::var_os("RANMAN_FILE") {
+        return Some(PathBuf::from(config_env))
+    }
+
+    let from_home = PathBuf::from(".local/share/ranman/list");
+
+    if let Some(xdg_data_home) = std::env::var_os("XDG_DATA_HOME") {
+        return Some(PathBuf::from(xdg_data_home).join(PathBuf::from(from_home)))
+    }
+
+    if let Some(home) = std::env::var_os("HOME") {
+        return Some(PathBuf::from(home).join(PathBuf::from(from_home)))
+    }
+    
+    None
 }
