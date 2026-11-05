@@ -1,5 +1,5 @@
 use std::collections::BTreeSet;
-use std::fs::read_dir;
+use std::fs::{create_dir_all, read_dir, read_to_string};
 use std::path::PathBuf;
 
 fn process_subcommand(cmd: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -91,7 +91,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut pages: Vec<Page> = vec![];
     for item in &tree {
-        let pair= item.rsplit_once(".");
+        let pair = item.rsplit_once(".");
         if let Some(x) = pair {
             let page = Page {
                 name: x.0.to_string(),
@@ -101,34 +101,59 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let state_file = state_file().unwrap();
+    let state_file = state_path().unwrap();
     println!("{}", state_file.to_string_lossy());
 
+    let content = read_to_string(&state_file).unwrap_or_else(|err| {
+        if err.kind() == std::io::ErrorKind::NotFound {
+            let body = pages.iter().fold(String::new(), |acc, item| {
+                format!("{}\n. {}({})", acc, item.name, item.section)
+            });
 
-    let subcommand = std::env::args().nth(1);
-    match subcommand {
-        Some(cmd) => process_subcommand(&cmd),
-        None => {
-            show_help();
-            Ok(())
+            let mut header = String::new();
+            header += "#ranman 1\n";
+            header += "#order random";
+            header + body.as_str()
+        } else {
+            panic!("{}", err);
         }
-    }
+    });
+
+    println!("{}", content);
+
+    let base_dir = state_file.as_path().parent().unwrap();
+    let tmp_file = base_dir.iter().as_path().join("list.tmp");
+    create_dir_all(base_dir)
+        .and_then(|_| std::fs::write(tmp_file, content))
+        .ok()
+        .unwrap();
+
+    // let subcommand = std::env::args().nth(1);
+    // match subcommand {
+    //     Some(cmd) => process_subcommand(&cmd),
+    //     None => {
+    //         show_help();
+    //         Ok(())
+    //     }
+    // }
+
+    Ok(())
 }
 
-fn state_file() -> Option<PathBuf> {
+fn state_path() -> Option<PathBuf> {
     if let Some(config_env) = std::env::var_os("RANMAN_FILE") {
-        return Some(PathBuf::from(config_env))
+        return Some(PathBuf::from(config_env));
     }
 
     let from_home = PathBuf::from(".local/share/ranman/list");
 
     if let Some(xdg_data_home) = std::env::var_os("XDG_DATA_HOME") {
-        return Some(PathBuf::from(xdg_data_home).join(PathBuf::from(from_home)))
+        return Some(PathBuf::from(xdg_data_home).join(PathBuf::from(from_home)));
     }
 
     if let Some(home) = std::env::var_os("HOME") {
-        return Some(PathBuf::from(home).join(PathBuf::from(from_home)))
+        return Some(PathBuf::from(home).join(PathBuf::from(from_home)));
     }
-    
+
     None
 }
