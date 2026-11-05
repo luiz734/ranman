@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fs::read_dir;
 use std::path::PathBuf;
 
@@ -54,7 +55,7 @@ struct Page {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let manpath = manpath();
-    let mut pages: Vec<Page> = vec![];
+    let mut tree: BTreeSet<String> = BTreeSet::new();
 
     for dir in manpath {
         // Don't need is dir. Error will handle it
@@ -76,16 +77,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         // Without to_string borrow checker complains
                                         let entry = e.file_name().to_string_lossy().to_string();
                                         if let Some(without_gz) = entry.strip_suffix(".gz") {
-                                            let pair= without_gz.rsplit_once(".");
-                                            if let Some(x) = pair {
-                                                let page = Page {
-                                                    name: x.0.to_string(),
-                                                    section: x.1.to_string(),
-                                                };
-                                                pages.push(page);
-                                            }
+                                            tree.insert(without_gz.to_string());
                                         }
-
                                     }
                                 }
                             }
@@ -96,6 +89,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    let mut pages: Vec<Page> = vec![];
+    for item in &tree {
+        let pair= item.rsplit_once(".");
+        if let Some(x) = pair {
+            let page = Page {
+                name: x.0.to_string(),
+                section: x.1.to_string(),
+            };
+            pages.push(page);
+        }
+    }
     let subcommand = std::env::args().nth(1);
     match subcommand {
         Some(cmd) => process_subcommand(&cmd),
