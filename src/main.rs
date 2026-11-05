@@ -1,7 +1,8 @@
+use std::fs::read_dir;
 use std::path::PathBuf;
 
 fn process_subcommand(cmd: &str) -> Result<(), Box<dyn std::error::Error>> {
-    match (cmd) {
+    match cmd {
         "help" => {
             show_help();
             Ok(())
@@ -46,12 +47,53 @@ fn manpath() -> Vec<PathBuf> {
     }
     paths
 }
+struct Page {
+    name: String,
+    section: String,
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let manpath = manpath();
+    let mut pages: Vec<Page> = vec![];
 
     for dir in manpath {
-        println!("Found manpage directory: {}", dir.display());
+        // Don't need is dir. Error will handle it
+
+        if dir.is_dir() {
+            if let Some(a) = read_dir(dir).ok() {
+                for b in a {
+                    if let Ok(b) = b {
+                        let file_name = b.file_name();
+                        // Skip directories .../man/mr
+                        if !file_name.to_string_lossy().starts_with("man") {
+                            continue;
+                        }
+
+                        if b.path().is_dir() {
+                            if let Some(c) = read_dir(b.path()).ok() {
+                                for d in c {
+                                    if let Ok(e) = d {
+                                        // Without to_string borrow checker complains
+                                        let entry = e.file_name().to_string_lossy().to_string();
+                                        if let Some(without_gz) = entry.strip_suffix(".gz") {
+                                            let pair= without_gz.rsplit_once(".");
+                                            if let Some(x) = pair {
+                                                let page = Page {
+                                                    name: x.0.to_string(),
+                                                    section: x.1.to_string(),
+                                                };
+                                                pages.push(page);
+                                            }
+                                        }
+
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     let subcommand = std::env::args().nth(1);
