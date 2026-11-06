@@ -3,6 +3,7 @@ use std::fmt::{Display, Formatter};
 use std::fs::{create_dir_all, read_dir, read_to_string, rename};
 use std::io::Error;
 use std::path::PathBuf;
+use rand::prelude::SliceRandom;
 
 fn process_subcommand(cmd: &str, app: App) -> Result<(), Box<dyn std::error::Error>> {
     match cmd {
@@ -55,7 +56,7 @@ fn manpath() -> Vec<PathBuf> {
     paths
 }
 
-fn generate(manpath: Vec<PathBuf>) -> Vec<Page> {
+fn generate(manpath: Vec<PathBuf>, random: bool) -> Vec<Page> {
     let mut tree: BTreeSet<String> = BTreeSet::new();
 
     for dir in manpath {
@@ -100,6 +101,10 @@ fn generate(manpath: Vec<PathBuf>) -> Vec<Page> {
             };
             pages.push(page);
         }
+    }
+
+    if random  {
+        pages.shuffle(&mut rand::rng())
     }
 
     pages
@@ -193,7 +198,7 @@ fn save(file: &PathBuf, content: &str) -> Result<(), Error> {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let manpath = manpath();
+    let man_paths = manpath();
 
     // This should never fail under normal conditions
     let state_file = match state_path() {
@@ -204,10 +209,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
+
+    let mut random = true;
     let text = match read_to_string(&state_file) {
         Ok(t) => t,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            let pages = generate(manpath);
+            // Parse from cli or env
+            let pages = generate(man_paths, true);
             let body = pages.iter().fold(String::new(), |acc, item| {
                 format!("{}\n. {}({})", acc, item.name, item.section)
             });
@@ -220,7 +228,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(_) => {}
                 Err(e) => {return Err(e.into());}
             }
-
             header
         }
         Err(e) => {
