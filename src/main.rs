@@ -1,9 +1,10 @@
+use rand::prelude::SliceRandom;
+use regex::Regex;
 use std::collections::BTreeSet;
 use std::fmt::{Display, Formatter};
-use std::fs::{create_dir_all, read_dir, read_to_string, rename};
+use std::fs::{DirEntry, create_dir_all, read_dir, read_to_string, rename};
 use std::io::Error;
 use std::path::PathBuf;
-use rand::prelude::SliceRandom;
 
 fn process_subcommand(cmd: &str, app: App) -> Result<(), Box<dyn std::error::Error>> {
     match cmd {
@@ -56,44 +57,50 @@ fn manpath() -> Vec<PathBuf> {
     paths
 }
 
-fn generate(manpath: Vec<PathBuf>, random: bool) -> Vec<Page> {
+fn generate(man_paths: Vec<PathBuf>, random: bool) -> Vec<Page> {
     let mut tree: BTreeSet<String> = BTreeSet::new();
 
-    for dir in manpath {
-        // Don't need is dir. Error will handle it
+    let print = |x: PathBuf| println!("{:?}", x.as_path().display());
 
-        if dir.is_dir() {
-            if let Some(a) = read_dir(dir).ok() {
-                for b in a {
-                    if let Ok(b) = b {
-                        let file_name = b.file_name();
-                        // Skip directories .../man/mr
-                        if !file_name.to_string_lossy().starts_with("man") {
-                            continue;
-                        }
+    // let _ = man_paths.iter().map(print).collect();
 
-                        if b.path().is_dir() {
-                            if let Some(c) = read_dir(b.path()).ok() {
-                                for d in c {
-                                    if let Ok(e) = d {
-                                        // Without to_string borrow checker complains
-                                        let entry = e.file_name().to_string_lossy().to_string();
-                                        if let Some(without_gz) = entry.strip_suffix(".gz") {
-                                            tree.insert(without_gz.to_string());
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    let re = Regex::new(r"man\d+$").unwrap();
+    let is_man_subdir =
+        |d: &DirEntry| d.path().is_dir() && re.is_match(d.path().as_path().to_str().unwrap());
+
+    let re = Regex::new(r"\.(gz|xz|bz2|zst)$").unwrap();
+    let is_compressed_page = |d: &DirEntry| re.is_match(d.path().as_path().to_str().unwrap());
+
+    man_paths
+        .iter()
+        .filter(|p| p.is_dir())
+        .flat_map(|p| p.read_dir())
+        .for_each(|r| {
+            r.flatten()
+                .filter(is_man_subdir)
+                .map(|d| d.path())
+                .flat_map(|p| p.read_dir())
+                .for_each(|r| {
+                    r.flatten()
+                        .filter(is_compressed_page)
+                        .map(|d| {
+                            String::from(d.path().to_str().unwrap().rsplit_once(".").unwrap().0)
+                        })
+                        .for_each(|p| {
+                            tree.insert(String::from(p));
+                        });
+                });
+        });
 
     let mut pages: Vec<Page> = vec![];
     for item in &tree {
-        let pair = item.rsplit_once(".");
+        let base_name = PathBuf::from(item)
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+        let pair = base_name.rsplit_once(".");
         if let Some(x) = pair {
             let page = Page {
                 name: x.0.to_string(),
@@ -103,7 +110,7 @@ fn generate(manpath: Vec<PathBuf>, random: bool) -> Vec<Page> {
         }
     }
 
-    if random  {
+    if random {
         pages.shuffle(&mut rand::rng())
     }
 
@@ -199,6 +206,8 @@ fn save(file: &PathBuf, content: &str) -> Result<(), Error> {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let man_paths = manpath();
+    let pages = generate(man_paths, true);
+    return Ok(());
 
     // This should never fail under normal conditions
     let state_file = match state_path() {
@@ -208,7 +217,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::process::exit(1);
         }
     };
-
 
     let mut random = true;
     let text = match read_to_string(&state_file) {
@@ -226,7 +234,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             match save(&state_file, &header) {
                 Ok(_) => {}
-                Err(e) => {return Err(e.into());}
+                Err(e) => {
+                    return Err(e.into());
+                }
             }
             header
         }
