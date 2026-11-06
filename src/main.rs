@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
-use std::fmt::{ Display, Formatter};
+use std::fmt::{Display, Formatter};
 use std::fs::{create_dir_all, read_dir, read_to_string, rename};
+use std::io::Error;
 use std::path::PathBuf;
 
 fn process_subcommand(cmd: &str, app: App) -> Result<(), Box<dyn std::error::Error>> {
@@ -53,79 +54,8 @@ fn manpath() -> Vec<PathBuf> {
     }
     paths
 }
-struct Page {
-    name: String,
-    section: String,
-}
 
-enum Status {
-    Reading,
-    Done,
-}
-
-enum Order {
-    Random,
-    Alphabetical,
-}
-
-impl Display for Order {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Order::Random => write!(f, "random"),
-            Order::Alphabetical => write!(f, "alphabetical"),
-        }
-    }
-}
-
-struct App<'a> {
-    file: PathBuf,
-    content: &'a str,
-    read: String,
-    order: Order,
-    sections: &'a str,
-}
-
-//
-fn new_app<'a>(state_file: PathBuf, content: &'a str) -> App<'a> {
-    let header = content
-        .lines()
-        .filter(|line| line.starts_with("#"))
-        .collect::<Vec<&str>>();
-
-    let section = header
-        .iter()
-        .find(|line| line.starts_with("#ranman"))
-        .unwrap_or(&"#ranman 1").split_once(" ").unwrap().1;
-
-    let order = header
-        .iter()
-        .find(|line| line.starts_with("#order"))
-        .unwrap_or(&"#order random");
-
-    let order = match order.split_once(" ") {
-        Some(("#order", "random")) => Order::Random,
-        Some(("#order", "alphabetical")) => Order::Alphabetical,
-        _ => Order::Random,
-    };
-
-    let total = content.lines().count() - header.len();
-    let lines: Vec<&str> = content.lines().skip(header.len()).collect();
-    let done = lines.iter().filter(|line| line.starts_with("D")).count();
-    let reading = lines.iter().filter(|line| line.starts_with("R")).count();
-    let total_counted = done + reading;
-    let read = format!("{total_counted}/{total} ({done} done, {reading} reading)");
-
-    App {
-        file: state_file,
-        content,
-        read,
-        order,
-        sections: section,
-    }
-}
-
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let manpath = manpath();
+fn generate(manpath: Vec<PathBuf>) -> Vec<Page> {
     let mut tree: BTreeSet<String> = BTreeSet::new();
 
     for dir in manpath {
@@ -172,33 +102,133 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let state_file = state_path().unwrap();
+    pages
+}
+struct Page {
+    name: String,
+    section: String,
+}
 
-    let content = read_to_string(&state_file).unwrap_or_else(|err| {
-        if err.kind() == std::io::ErrorKind::NotFound {
+enum Status {
+    Reading,
+    Done,
+}
+
+enum Order {
+    Random,
+    Alphabetical,
+}
+
+impl Display for Order {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Order::Random => write!(f, "random"),
+            Order::Alphabetical => write!(f, "alphabetical"),
+        }
+    }
+}
+
+struct App {
+    file: PathBuf,
+    content: String,
+    read: String,
+    order: Order,
+    sections: String,
+}
+
+//
+fn new_app(state_file: PathBuf, content: String) -> App {
+    let header = content
+        .lines()
+        .filter(|line| line.starts_with("#"))
+        .collect::<Vec<&str>>();
+
+    let section = header
+        .iter()
+        .find(|line| line.starts_with("#ranman"))
+        .unwrap_or(&"#ranman 1")
+        .split_once(" ")
+        .unwrap()
+        .1
+        .to_string();
+
+    let order = header
+        .iter()
+        .find(|line| line.starts_with("#order"))
+        .unwrap_or(&"#order random");
+
+    let order = match order.split_once(" ") {
+        Some(("#order", "random")) => Order::Random,
+        Some(("#order", "alphabetical")) => Order::Alphabetical,
+        _ => Order::Random,
+    };
+
+    let total = content.lines().count() - header.len();
+    let lines: Vec<&str> = content.lines().skip(header.len()).collect();
+    let done = lines.iter().filter(|line| line.starts_with("D")).count();
+    let reading = lines.iter().filter(|line| line.starts_with("R")).count();
+    let total_counted = done + reading;
+    let read = format!("{total_counted}/{total} ({done} done, {reading} reading)");
+
+    App {
+        file: state_file,
+        content,
+        read,
+        order,
+        sections: section,
+    }
+}
+
+fn save(file: &PathBuf, content: &str) -> Result<(), Error> {
+    let base_dir = file.as_path().parent().unwrap();
+    let tmp_file = base_dir.iter().as_path().join("list.tmp");
+
+    match create_dir_all(base_dir).and_then(|_| std::fs::write(&tmp_file, &content)) {
+        Ok(_) => {
+            rename(tmp_file, &file)?;
+            Ok(())
+        }
+        Err(e) => Err(e),
+    }
+}
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let manpath = manpath();
+
+    // This should never fail under normal conditions
+    let state_file = match state_path() {
+        Some(f) => f,
+        None => {
+            eprintln!("ranman: Can't find state_file location.");
+            std::process::exit(1);
+        }
+    };
+
+    let text = match read_to_string(&state_file) {
+        Ok(t) => t,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            let pages = generate(manpath);
             let body = pages.iter().fold(String::new(), |acc, item| {
                 format!("{}\n. {}({})", acc, item.name, item.section)
             });
-
             let mut header = String::new();
             header += "#ranman 1\n";
             header += "#order random";
-            header + body.as_str()
-        } else {
-            panic!("{}", err);
+            header += body.as_str();
+
+            match save(&state_file, &header) {
+                Ok(_) => {}
+                Err(e) => {return Err(e.into());}
+            }
+
+            header
         }
-    });
+        Err(e) => {
+            return Err(e.into());
+        }
+    };
 
-    let base_dir = state_file.as_path().parent().unwrap();
-    let tmp_file = base_dir.iter().as_path().join("list.tmp");
-    create_dir_all(base_dir)
-        .and_then(|_| std::fs::write(&tmp_file, &content))
-        .ok()
-        .unwrap();
-
-    rename(tmp_file, &state_file)?;
-
-    let app = new_app(state_file, content.as_str());
+    let app = new_app(state_file, text);
 
     let subcommand = std::env::args().nth(1);
     match subcommand {
@@ -209,7 +239,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 }
-
 
 fn info(app: App) {
     let mut s = String::new();
