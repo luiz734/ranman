@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
-use std::fmt::{Display, Formatter};
-use std::fs::{File, create_dir_all, read_dir, read_to_string, rename};
+use std::fmt::{ Display, Formatter};
+use std::fs::{create_dir_all, read_dir, read_to_string, rename};
 use std::path::PathBuf;
 
 fn process_subcommand(cmd: &str, app: App) -> Result<(), Box<dyn std::error::Error>> {
@@ -80,6 +80,7 @@ impl Display for Order {
 struct App<'a> {
     file: PathBuf,
     content: &'a str,
+    read: String,
     order: Order,
     sections: &'a str,
 }
@@ -107,11 +108,18 @@ fn new_app<'a>(state_file: PathBuf, content: &'a str) -> App<'a> {
         _ => Order::Random,
     };
 
+    let total = content.lines().count() - header.len();
+    let lines: Vec<&str> = content.lines().skip(header.len()).collect();
+    let done = lines.iter().filter(|line| line.starts_with("D")).count();
+    let reading = lines.iter().filter(|line| line.starts_with("R")).count();
+    let total_counted = done + reading;
+    let read = format!("{total_counted}/{total} ({done} done, {reading} reading)");
 
     App {
         file: state_file,
         content,
-        order: order,
+        read,
+        order,
         sections: section,
     }
 }
@@ -165,7 +173,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let state_file = state_path().unwrap();
-    println!("{}", state_file.to_string_lossy());
 
     let content = read_to_string(&state_file).unwrap_or_else(|err| {
         if err.kind() == std::io::ErrorKind::NotFound {
@@ -209,8 +216,8 @@ fn info(app: App) {
     s += &format!("file: {}\n", app.file.as_path().to_string_lossy());
     s += &format!("order: {}\n", app.order);
     s += &format!("sections: {}\n", app.sections);
+    s += &format!("read: {}\n", app.read);
 
-    s += "read: XXXXX\n";
     s += "current: XXXXX\n";
     s += "next: XXXXX\n";
     println!("{}", s);
