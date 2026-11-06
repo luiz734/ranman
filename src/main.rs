@@ -1,11 +1,16 @@
 use std::collections::BTreeSet;
-use std::fs::{create_dir_all, read_dir, read_to_string};
+use std::fmt::{Display, Formatter};
+use std::fs::{File, create_dir_all, read_dir, read_to_string, rename};
 use std::path::PathBuf;
 
-fn process_subcommand(cmd: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn process_subcommand(cmd: &str, app: App) -> Result<(), Box<dyn std::error::Error>> {
     match cmd {
         "help" => {
             show_help();
+            Ok(())
+        }
+        "info" => {
+            info(app);
             Ok(())
         }
         &_ => {
@@ -51,6 +56,64 @@ fn manpath() -> Vec<PathBuf> {
 struct Page {
     name: String,
     section: String,
+}
+
+enum Status {
+    Reading,
+    Done,
+}
+
+enum Order {
+    Random,
+    Alphabetical,
+}
+
+impl Display for Order {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Order::Random => write!(f, "random"),
+            Order::Alphabetical => write!(f, "alphabetical"),
+        }
+    }
+}
+
+struct App<'a> {
+    file: PathBuf,
+    content: &'a str,
+    order: Order,
+    sections: &'a str,
+}
+
+//
+fn new_app<'a>(state_file: PathBuf, content: &'a str) -> App<'a> {
+    let header = content
+        .lines()
+        .filter(|line| line.starts_with("#"))
+        .collect::<Vec<&str>>();
+
+    let section = header
+        .iter()
+        .find(|line| line.starts_with("#ranman"))
+        .unwrap_or(&"#ranman 1").split_once(" ").unwrap().1;
+
+    let order = header
+        .iter()
+        .find(|line| line.starts_with("#order"))
+        .unwrap_or(&"#order random");
+
+    let order = match order.split_once(" ") {
+        Some(("#order", "random")) => Order::Random,
+        Some(("#order", "alphabetical")) => Order::Alphabetical,
+        _ => Order::Random,
+    };
+
+
+    App {
+        file: state_file,
+        content,
+        order: order,
+        sections: section,
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -119,25 +182,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    println!("{}", content);
-
     let base_dir = state_file.as_path().parent().unwrap();
     let tmp_file = base_dir.iter().as_path().join("list.tmp");
     create_dir_all(base_dir)
-        .and_then(|_| std::fs::write(tmp_file, content))
+        .and_then(|_| std::fs::write(&tmp_file, &content))
         .ok()
         .unwrap();
 
-    // let subcommand = std::env::args().nth(1);
-    // match subcommand {
-    //     Some(cmd) => process_subcommand(&cmd),
-    //     None => {
-    //         show_help();
-    //         Ok(())
-    //     }
-    // }
+    rename(tmp_file, &state_file)?;
 
-    Ok(())
+    let app = new_app(state_file, content.as_str());
+
+    let subcommand = std::env::args().nth(1);
+    match subcommand {
+        Some(cmd) => process_subcommand(&cmd, app),
+        None => {
+            show_help();
+            Ok(())
+        }
+    }
+}
+
+
+fn info(app: App) {
+    let mut s = String::new();
+    s += &format!("file: {}\n", app.file.as_path().to_string_lossy());
+    s += &format!("order: {}\n", app.order);
+    s += &format!("sections: {}\n", app.sections);
+
+    s += "read: XXXXX\n";
+    s += "current: XXXXX\n";
+    s += "next: XXXXX\n";
+    println!("{}", s);
 }
 
 fn state_path() -> Option<PathBuf> {
