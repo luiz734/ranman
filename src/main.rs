@@ -1,6 +1,6 @@
 use rand::prelude::SliceRandom;
 use regex::Regex;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::fmt::{Display, Formatter};
 use std::fs::{DirEntry, create_dir_all, read_dir, read_to_string, rename};
 use std::io::Error;
@@ -32,7 +32,7 @@ fn unknown_command() {
     show_help();
 }
 
-fn manpath() -> Vec<PathBuf> {
+fn man_paths() -> Vec<PathBuf> {
     let output = std::process::Command::new("manpath").output();
     let mut paths: Vec<PathBuf> = vec![];
 
@@ -57,7 +57,7 @@ fn manpath() -> Vec<PathBuf> {
     paths
 }
 
-fn generate(man_paths: Vec<PathBuf>, random: bool) -> Vec<Page> {
+fn generate(man_paths: Vec<PathBuf>, random: bool) -> Vec<Entry> {
     let mut tree: BTreeSet<String> = BTreeSet::new();
 
     let print = |x: PathBuf| println!("{:?}", x.as_path().display());
@@ -92,7 +92,7 @@ fn generate(man_paths: Vec<PathBuf>, random: bool) -> Vec<Page> {
                 });
         });
 
-    let mut pages: Vec<Page> = vec![];
+    let mut entries: Vec<Entry> = vec![];
     for item in &tree {
         let base_name = PathBuf::from(item)
             .file_name()
@@ -102,28 +102,37 @@ fn generate(man_paths: Vec<PathBuf>, random: bool) -> Vec<Page> {
             .to_string();
         let pair = base_name.rsplit_once(".");
         if let Some(x) = pair {
-            let page = Page {
+            let entry = Entry {
                 name: x.0.to_string(),
                 section: x.1.to_string(),
+                status: Status::Unread,
             };
-            pages.push(page);
+            entries.push(entry);
         }
     }
 
     if random {
-        pages.shuffle(&mut rand::rng())
+        entries.shuffle(&mut rand::rng())
     }
 
-    pages
-}
-struct Page {
-    name: String,
-    section: String,
+    entries
 }
 
+#[derive(PartialEq, Eq)]
 enum Status {
     Reading,
+    Unread,
     Done,
+}
+
+impl Display for Status {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Status::Reading => write!(f, "R"),
+            Status::Unread => write!(f, "."),
+            Status::Done => write!(f, "D"),
+        }
+    }
 }
 
 enum Order {
@@ -140,77 +149,144 @@ impl Display for Order {
     }
 }
 
+struct Entry {
+    status: Status,
+    name: String,
+    section: String,
+}
+
 struct App {
-    file: PathBuf,
-    content: String,
-    read: String,
+    path: PathBuf,
     order: Order,
-    sections: String,
+    entries: Vec<Entry>,
+    sections: HashSet<String>,
 }
 
-//
-fn new_app(state_file: PathBuf, content: String) -> App {
-    let header = content
-        .lines()
-        .filter(|line| line.starts_with("#"))
-        .collect::<Vec<&str>>();
+impl App {
+    fn save_to_file(&self) -> Result<(), Error> {
+        let mut text = String::new();
 
-    let section = header
-        .iter()
-        .find(|line| line.starts_with("#ranman"))
-        .unwrap_or(&"#ranman 1")
-        .split_once(" ")
-        .unwrap()
-        .1
-        .to_string();
+        text += &format!(
+            "#ranman {}\n",
+            self.sections
+                .iter()
+                .fold(String::new(), |acc, s| acc + " " + s)
+        );
+        text += &format!("#order {}\n", self.order.to_string());
+        let entries = self.entries.iter().fold(String::new(), |acc, e| {
+            format!("{}\n{} {}({})", acc, e.status, e.name, e.section)
+        });
+        text += &entries;
 
-    let order = header
-        .iter()
-        .find(|line| line.starts_with("#order"))
-        .unwrap_or(&"#order random");
+        // Save to disk
+        let base_dir = self.path.as_path().parent().unwrap();
+        let tmp_file = base_dir.iter().as_path().join("list.tmp");
 
-    let order = match order.split_once(" ") {
-        Some(("#order", "random")) => Order::Random,
-        Some(("#order", "alphabetical")) => Order::Alphabetical,
-        _ => Order::Random,
-    };
-
-    let total = content.lines().count() - header.len();
-    let lines: Vec<&str> = content.lines().skip(header.len()).collect();
-    let done = lines.iter().filter(|line| line.starts_with("D")).count();
-    let reading = lines.iter().filter(|line| line.starts_with("R")).count();
-    let total_counted = done + reading;
-    let read = format!("{total_counted}/{total} ({done} done, {reading} reading)");
-
-    App {
-        file: state_file,
-        content,
-        read,
-        order,
-        sections: section,
-    }
-}
-
-fn save(file: &PathBuf, content: &str) -> Result<(), Error> {
-    let base_dir = file.as_path().parent().unwrap();
-    let tmp_file = base_dir.iter().as_path().join("list.tmp");
-
-    match create_dir_all(base_dir).and_then(|_| std::fs::write(&tmp_file, &content)) {
-        Ok(_) => {
-            rename(tmp_file, &file)?;
-            Ok(())
+        match create_dir_all(base_dir).and_then(|_| std::fs::write(&tmp_file, &text)) {
+            Ok(_) => {
+                rename(tmp_file, &self.path)?;
+                Ok(())
+            }
+            Err(e) => Err(e),
         }
-        Err(e) => Err(e),
+    }
+
+    fn count_status(&self, status: Status) -> usize {
+        self.entries
+            .iter()
+            // .filter(|e| e.s)
+            .filter(|e| e.status == status)
+            .count()
+    }
+
+    fn sections_string(&self) -> String {
+        self.sections
+            .iter()
+            .fold(String::new(), |acc, s| acc + s + " ")
+            .trim()
+            .to_string()
+    }
+
+    fn generate(
+        file: PathBuf,
+        sections: &str,
+        man_paths: Vec<PathBuf>,
+        random: bool,
+    ) -> Result<App, Error> {
+        let entries = generate(man_paths, random);
+
+        let order = match random {
+            true => Order::Random,
+            false => Order::Alphabetical,
+        };
+
+        let sections = HashSet::from([sections.split(" ").collect()]);
+
+        Ok(App {
+            path: file,
+            order,
+            entries,
+            sections,
+        })
+    }
+
+    fn from_text(file: PathBuf, text: String) -> Result<App, Error> {
+        let section = text
+            .lines()
+            .find(|line| line.starts_with("#ranman"))
+            .unwrap_or(&"#ranman 1");
+        let sections = section.trim().split_once(" ").unwrap().1.to_string();
+        let sections = HashSet::from([sections.split(" ").collect()]);
+
+        let order = text
+            .lines()
+            .find(|line| line.starts_with("#order"))
+            .unwrap_or(&"#order random");
+        let order = match order.split_once(" ") {
+            Some(("#order", "random")) => Order::Random,
+            Some(("#order", "alphabetical")) => Order::Alphabetical,
+            _ => Order::Random,
+        };
+
+        let entries = text.lines().skip(2).map(|line| {
+            let pair = line.split_once(" ").unwrap();
+
+            let status = match pair.0 {
+                "R" => Status::Reading,
+                "D" => Status::Done,
+                _ => Status::Unread,
+            };
+
+            let pair = pair.1.rsplit_once("(").unwrap();
+            let name = pair.0.to_string();
+            let section = pair.1.strip_suffix(")").unwrap().to_string();
+
+            Entry {
+                status,
+                name,
+                section,
+            }
+        });
+
+        // let total = content.lines().count() - header.len();
+        // let lines: Vec<&str> = content.lines().skip(header.len()).collect();
+        // let done = lines.iter().filter(|line| line.starts_with("D")).count();
+        // let reading = lines.iter().filter(|line| line.starts_with("R")).count();
+        // let total_counted = done + reading;
+        // let read = format!("{total_counted}/{total} ({done} done, {reading} reading)");
+
+        Ok(App {
+            path: file,
+            order,
+            entries: entries.collect(),
+            sections,
+        })
     }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let man_paths = manpath();
-    let pages = generate(man_paths, true);
-    return Ok(());
-
     // This should never fail under normal conditions
-    let state_file = match state_path() {
+    let state_path = match state_path() {
         Some(f) => f,
         None => {
             eprintln!("ranman: Can't find state_file location.");
@@ -218,34 +294,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    let mut random = true;
-    let text = match read_to_string(&state_file) {
-        Ok(t) => t,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            // Parse from cli or env
-            let pages = generate(man_paths, true);
-            let body = pages.iter().fold(String::new(), |acc, item| {
-                format!("{}\n. {}({})", acc, item.name, item.section)
-            });
-            let mut header = String::new();
-            header += "#ranman 1\n";
-            header += "#order random";
-            header += body.as_str();
+    let man_paths = man_paths();
 
-            match save(&state_file, &header) {
-                Ok(_) => {}
-                Err(e) => {
-                    return Err(e.into());
-                }
-            }
-            header
+    let app = match read_to_string(&state_path) {
+        Ok(t) => App::from_text(state_path, t)?,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            App::generate(state_path, "1", man_paths, false)?
         }
         Err(e) => {
             return Err(e.into());
         }
     };
-
-    let app = new_app(state_file, text);
 
     let subcommand = std::env::args().nth(1);
     match subcommand {
@@ -259,10 +318,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 fn info(app: App) {
     let mut s = String::new();
-    s += &format!("file: {}\n", app.file.as_path().to_string_lossy());
+    s += &format!("file: {}\n", app.path.as_path().to_string_lossy());
     s += &format!("order: {}\n", app.order);
-    s += &format!("sections: {}\n", app.sections);
-    s += &format!("read: {}\n", app.read);
+    s += &format!("sections: {}\n", app.sections_string());
+
+    let done = app.count_status(Status::Done);
+    let reading = app.count_status(Status::Reading);
+    let unread = app.count_status(Status::Unread);
+    let total = done + reading + unread;
+    s += &format!(
+        "read: {}/{} ({} done, {} reading)\n",
+        done + reading,
+        total,
+        done,
+        reading
+    );
 
     s += "current: XXXXX\n";
     s += "next: XXXXX\n";
