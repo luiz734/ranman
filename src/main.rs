@@ -1,6 +1,7 @@
 use rand::prelude::SliceRandom;
 use regex::Regex;
 use std::collections::{BTreeSet, HashSet};
+use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::fs::{DirEntry, create_dir_all, read_dir, read_to_string, rename};
 use std::io::Error;
@@ -120,9 +121,9 @@ fn generate(man_paths: Vec<PathBuf>, random: bool) -> Vec<Entry> {
 
 #[derive(PartialEq, Eq)]
 enum Status {
+    Done,
     Reading,
     Unread,
-    Done,
 }
 
 impl Display for Status {
@@ -174,7 +175,7 @@ impl App {
         );
         text += &format!("#order {}\n", self.order.to_string());
         let entries = self.entries.iter().fold(String::new(), |acc, e| {
-            format!("{}\n{} {}({})", acc, e.status, e.name, e.section)
+            format!("{}{} {}({})\n", acc, e.status, e.name, e.section)
         });
         text += &entries;
 
@@ -205,6 +206,14 @@ impl App {
             .fold(String::new(), |acc, s| acc + s + " ")
             .trim()
             .to_string()
+    }
+
+    fn sort_by_status(&mut self) {
+        self.entries.sort_by_key(|e| match e.status {
+            Status::Done => 1,
+            Status::Reading => 2,
+            Status::Unread => 3,
+        });
     }
 
     fn generate(
@@ -249,6 +258,11 @@ impl App {
         };
 
         let entries = text.lines().skip(2).map(|line| {
+            if line.is_empty(){
+                // return Err(ParsingError::EmptyLine)
+                panic!("empty line");
+            }
+
             let pair = line.split_once(" ").unwrap();
 
             let status = match pair.0 {
@@ -284,6 +298,19 @@ impl App {
     }
 }
 
+#[derive(Debug, Clone)]
+enum ParsingError {
+    EmptyLine
+}
+impl Display for ParsingError {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            ParsingError::EmptyLine =>  write!(f, "State file contains empty line")
+        }
+
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // This should never fail under normal conditions
     let state_path = match state_path() {
@@ -296,7 +323,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let man_paths = man_paths();
 
-    let app = match read_to_string(&state_path) {
+    let mut app = match read_to_string(&state_path) {
         Ok(t) => App::from_text(state_path, t)?,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             App::generate(state_path, "1", man_paths, false)?
@@ -305,6 +332,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Err(e.into());
         }
     };
+    app.sort_by_status();
+    // Redundant when just read
+    app.save_to_file()?;
 
     let subcommand = std::env::args().nth(1);
     match subcommand {
@@ -336,6 +366,13 @@ fn info(app: App) {
 
     s += "current: XXXXX\n";
     s += "next: XXXXX\n";
+
+    let entries = app.entries.iter().fold(String::new(), |acc, e| {
+        format!("{}\n{} {}({})", acc, e.status, e.name, e.section)
+    });
+
+    s += &entries;
+
     println!("{}", s);
 }
 
