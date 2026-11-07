@@ -1,12 +1,14 @@
 use rand::prelude::SliceRandom;
 use regex::Regex;
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::fs::{DirEntry, create_dir_all, read_dir, read_to_string, rename};
 use std::io::Error;
 use std::ops::DerefMut;
 use std::path::PathBuf;
+
+const APP_VERSION: &str = "1";
 
 fn process_subcommand(cmd: &str, app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     match cmd {
@@ -15,7 +17,7 @@ fn process_subcommand(cmd: &str, app: &mut App) -> Result<(), Box<dyn std::error
             Ok(())
         }
         "info" => {
-            info(app);
+            info(app)?;
             Ok(())
         }
         "start" => {
@@ -69,10 +71,6 @@ fn man_paths() -> Vec<PathBuf> {
 
 fn generate(man_paths: Vec<PathBuf>, random: bool) -> Vec<Entry> {
     let mut tree: BTreeSet<String> = BTreeSet::new();
-
-    let print = |x: PathBuf| println!("{:?}", x.as_path().display());
-
-    // let _ = man_paths.iter().map(print).collect();
 
     let re = Regex::new(r"man\d+$").unwrap();
     let is_man_subdir =
@@ -181,24 +179,19 @@ struct App {
     path: PathBuf,
     order: Order,
     entries: Vec<Entry>,
-    sections: HashSet<String>,
+    sections: Vec<String>,
 }
 
 impl App {
     fn save_to_file(&self) -> Result<(), Error> {
         let mut text = String::new();
 
-        text += &format!(
-            "#ranman {}\n",
-            self.sections
-                .iter()
-                .fold(String::new(), |acc, s| acc + " " + s)
-        );
+        text += &format!("#ranman {}", APP_VERSION);
         text += &format!("#order {}\n", self.order.to_string());
-        let entries = self.entries.iter().fold(String::new(), |acc, e| {
-            format!("{}{} {}({})\n", acc, e.status, e.name, e.section)
-        });
-        text += &entries;
+
+        for e in &self.entries {
+            text += &format!("{} {}({})\n", e.status, e.name, e.section)
+        }
 
         // Save to disk
         let base_dir = self.path.as_path().parent().unwrap();
@@ -229,36 +222,27 @@ impl App {
             .to_string()
     }
 
-    fn sort_by_status(&mut self) {
-        self.entries.sort_by_key(|e| match e.status {
-            Status::Done => 1,
-            Status::Reading => 2,
-            Status::Unread => 3,
-        });
+    fn next_idx(&self) -> Option<usize> {
+        self.entries
+            .iter()
+            .rposition(|e| e.status == Status::Unread && self.selected(e))
     }
 
-    // fn next(&self) -> Option<&Entry> {
-    //     self.entries
-    //         .iter()
-    //         .filter(|e| self.sections.contains(&e.section))
-    //         .find(|e| e.status == Status::Unread)
-    // }
-    fn next(&mut self) -> Option<&mut Entry> {
+    fn current_idx(&self) -> Option<usize> {
         self.entries
-            .iter_mut()
-            .filter(|e| self.sections.contains(&e.section))
-            .find(|e| e.status == Status::Unread)
+            .iter()
+            .rposition(|e| e.status == Status::Reading && self.selected(e))
     }
-    fn current(&mut self) -> Option<&mut Entry> {
-        self.entries
-            .iter_mut()
-            .filter(|e| self.sections.contains(&e.section))
-            .rfind(|e| e.status == Status::Reading)
+
+    fn selected(&self, e: &Entry) -> bool {
+        self.sections
+            .iter()
+            .any(|s| e.section.starts_with(s.as_str()))
     }
 
     fn generate(
         file: PathBuf,
-        sections: &str,
+        sections: Vec<String>,
         man_paths: Vec<PathBuf>,
         random: bool,
     ) -> Result<App, Error> {
@@ -269,8 +253,6 @@ impl App {
             false => Order::Alphabetical,
         };
 
-        let sections = HashSet::from([sections.split(" ").collect()]);
-
         Ok(App {
             path: file,
             order,
@@ -279,14 +261,7 @@ impl App {
         })
     }
 
-    fn from_text(file: PathBuf, text: String) -> Result<App, Error> {
-        let section = text
-            .lines()
-            .find(|line| line.starts_with("#ranman"))
-            .unwrap_or(&"#ranman 1");
-        let sections = section.trim().split_once(" ").unwrap().1.to_string();
-        let sections = HashSet::from([sections.split(" ").collect()]);
-
+    fn from_text(file: PathBuf, text: String, sections: Vec<String>) -> Result<App, Error> {
         let order = text
             .lines()
             .find(|line| line.starts_with("#order"))
@@ -297,37 +272,28 @@ impl App {
             _ => Order::Random,
         };
 
-        let entries = text.lines().skip(2).map(|line| {
-            if line.is_empty() {
-                // return Err(ParsingError::EmptyLine)
-                panic!("empty line");
-            }
+        let entries = text
+            .lines()
+            .filter(|l| !l.starts_with("#") && l.is_empty())
+            .map(|line| {
+                let pair = line.split_once(" ").unwrap();
 
-            let pair = line.split_once(" ").unwrap();
+                let status = match pair.0 {
+                    "R" => Status::Reading,
+                    "D" => Status::Done,
+                    _ => Status::Unread,
+                };
 
-            let status = match pair.0 {
-                "R" => Status::Reading,
-                "D" => Status::Done,
-                _ => Status::Unread,
-            };
+                let pair = pair.1.rsplit_once("(").unwrap();
+                let name = pair.0.to_string();
+                let section = pair.1.strip_suffix(")").unwrap().to_string();
 
-            let pair = pair.1.rsplit_once("(").unwrap();
-            let name = pair.0.to_string();
-            let section = pair.1.strip_suffix(")").unwrap().to_string();
-
-            Entry {
-                status,
-                name,
-                section,
-            }
-        });
-
-        // let total = content.lines().count() - header.len();
-        // let lines: Vec<&str> = content.lines().skip(header.len()).collect();
-        // let done = lines.iter().filter(|line| line.starts_with("D")).count();
-        // let reading = lines.iter().filter(|line| line.starts_with("R")).count();
-        // let total_counted = done + reading;
-        // let read = format!("{total_counted}/{total} ({done} done, {reading} reading)");
+                Entry {
+                    status,
+                    name,
+                    section,
+                }
+            });
 
         Ok(App {
             path: file,
@@ -362,16 +328,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let man_paths = man_paths();
 
+    let sections = vec!["1".to_owned()];
+
     let mut app = match read_to_string(&state_path) {
-        Ok(t) => App::from_text(state_path, t)?,
+        Ok(t) => App::from_text(state_path, t, sections)?,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            App::generate(state_path, "1", man_paths, false)?
+            App::generate(state_path, sections, man_paths, true)?
         }
         Err(e) => {
             return Err(e.into());
         }
     };
-    app.sort_by_status();
     // Redundant when just read
     app.save_to_file()?;
 
@@ -382,7 +349,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
-fn info(app: &mut App) {
+#[derive(Default)]
+struct SectionInfo {
+    total: usize,
+    read: usize,
+}
+
+impl Display for SectionInfo {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{}/{}", self.read, self.total)
+    }
+}
+
+fn info(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     let mut s = String::new();
     s += &format!("file: {}\n", app.path.as_path().to_string_lossy());
     s += &format!("order: {}\n", app.order);
@@ -400,48 +379,66 @@ fn info(app: &mut App) {
         reading
     );
 
-    if let Some(current) = app.current() {
-        s += &format!("current: {}({})\n", current.name, current.section);
+    if let Some(i) = app.current_idx() {
+        s += &format!(
+            "current: {}({})\n",
+            app.entries[i].name, app.entries[i].section
+        );
     } else {
         s += "current: -\n";
     }
 
-    if let Some(next) = app.next() {
-        s += &format!("next: {}({})\n", next.name, next.section);
+    if let Some(i) = app.next_idx() {
+        s += &format!(
+            "next: {}({})\n",
+            app.entries[i].name, app.entries[i].section
+        );
     } else {
         s += "next: (no next)\n";
     }
 
-    let entries = app.entries.iter().fold(String::new(), |acc, e| {
-        format!("{}\n{} {}({})", acc, e.status, e.name, e.section)
-    });
-
-    // s += &entries;
+    let mut by_section: BTreeMap<&str, SectionInfo> = BTreeMap::new();
+    for e in &app.entries {
+        let s = by_section.entry(e.section.as_str()).or_default();
+        s.total += 1;
+        if e.status != Status::Unread {
+            s.read += 1;
+        }
+    }
 
     println!("{}", s);
+
+    Ok(())
 }
 
-fn start(app: &mut App) -> Result<(), Error> {
-    if let Some(next) = app.next() {
-        next.read();
-    }
-    app.sort_by_status();
+fn start(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
+    let i = app
+        .next_idx()
+        .ok_or("no unread pages in the selected sections")?;
+    let mut e = app.entries.remove(i);
+    e.read();
+    let boundary = app
+        .entries
+        .iter()
+        .position(|e| e.status == Status::Unread)
+        .unwrap_or(app.entries.len());
+    println!("{} {}", e.section, e.name);
+    app.entries.insert(boundary, e);
     Ok(app.save_to_file()?)
 }
-fn done(app: &mut App) -> Result<(), Error> {
-    if let Some(last_reading) = app.current() {
-        last_reading.done();
-    }
-    app.sort_by_status();
+fn done(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
+    let i = app.current_idx().ok_or("nothing in progress")?;
+    app.entries[i].done();
     Ok(app.save_to_file()?)
 }
 
 fn ranman(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
-    if let Some(last_reading) = app.current() {
-        println!("{} {}", last_reading.section, last_reading.name);
+    if let Some(i) = app.current_idx() {
+        println!("{} {}", app.entries[i].section, app.entries[i].name);
     } else {
-        if let Some(last_unread) = app.current() {
-            println!("{} {} (not started)", last_unread.section, last_unread.name);
+        if let Some(i) = app.next_idx() {
+            print!("{} {}", app.entries[i].section, app.entries[i].name);
+            eprintln!("(not started)")
         } else {
             println!("Nothing to read!")
         }
