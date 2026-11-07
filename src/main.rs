@@ -17,9 +17,13 @@ fn process_subcommand(cmd: &str, app: &mut App) -> Result<(), Box<dyn std::error
         "info" => {
             info(app);
             Ok(())
-        },
+        }
         "start" => {
             start(app)?;
+            Ok(())
+        }
+        "done" => {
+            done(app)?;
             Ok(())
         }
         &_ => {
@@ -180,7 +184,6 @@ struct App {
     sections: HashSet<String>,
 }
 
-
 impl App {
     fn save_to_file(&self) -> Result<(), Error> {
         let mut text = String::new();
@@ -246,9 +249,9 @@ impl App {
             .filter(|e| self.sections.contains(&e.section))
             .find(|e| e.status == Status::Unread)
     }
-    fn current(&self) -> Option<&Entry> {
+    fn current(&mut self) -> Option<&mut Entry> {
         self.entries
-            .iter()
+            .iter_mut()
             .filter(|e| self.sections.contains(&e.section))
             .rfind(|e| e.status == Status::Reading)
     }
@@ -375,10 +378,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let subcommand = std::env::args().nth(1);
     match subcommand {
         Some(cmd) => process_subcommand(&cmd, &mut app),
-        None => {
-            show_help();
-            Ok(())
-        }
+        None => ranman(&mut app),
     }
 }
 
@@ -403,7 +403,7 @@ fn info(app: &mut App) {
     if let Some(current) = app.current() {
         s += &format!("current: {}({})\n", current.name, current.section);
     } else {
-        s += "next: (no current)\n\n";
+        s += "current: -\n";
     }
 
     if let Some(next) = app.next() {
@@ -422,11 +422,31 @@ fn info(app: &mut App) {
 }
 
 fn start(app: &mut App) -> Result<(), Error> {
-    if let Some(current) = app.next() {
-        current.read();
+    if let Some(next) = app.next() {
+        next.read();
     }
     app.sort_by_status();
     Ok(app.save_to_file()?)
+}
+fn done(app: &mut App) -> Result<(), Error> {
+    if let Some(last_reading) = app.current() {
+        last_reading.done();
+    }
+    app.sort_by_status();
+    Ok(app.save_to_file()?)
+}
+
+fn ranman(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
+    if let Some(last_reading) = app.current() {
+        println!("{} {}", last_reading.section, last_reading.name);
+    } else {
+        if let Some(last_unread) = app.current() {
+            println!("{} {} (not started)", last_unread.section, last_unread.name);
+        } else {
+            println!("Nothing to read!")
+        }
+    }
+    Ok(())
 }
 
 fn state_path() -> Option<PathBuf> {
