@@ -23,6 +23,18 @@ fn process_subcommand(cmd: &str, app: &mut App) -> Result<(), Box<dyn std::error
             start(app)?;
             Ok(())
         }
+        "history" => {
+            history(app);
+            Ok(())
+        }
+        "peek" => {
+            peek(app);
+            Ok(())
+        }
+        "pile" => {
+            pile(app);
+            Ok(())
+        }
         "done" => {
             done(app)?;
             Ok(())
@@ -386,7 +398,7 @@ fn info(app: &App) -> Result<(), Box<dyn std::error::Error>> {
             "current:", app.entries[i].name, app.entries[i].section
         );
     } else {
-        s += &format!("{:p$}: -\n", "current");
+        s += &format!("{:p$} -\n", "current:");
     }
 
     if let Some(i) = app.next_idx() {
@@ -395,7 +407,7 @@ fn info(app: &App) -> Result<(), Box<dyn std::error::Error>> {
             "next:", app.entries[i].name, app.entries[i].section
         );
     } else {
-        s += &format!("{:p$}: -\n", "next");
+        s += &format!("{:p$} -\n", "next:");
     }
 
     let mut by_section: BTreeMap<&str, SectionInfo> = BTreeMap::new();
@@ -444,12 +456,56 @@ fn ranman(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     } else {
         if let Some(i) = app.next_idx() {
             print!("{} {}", app.entries[i].section, app.entries[i].name);
-            eprintln!("(not started)")
+            eprintln!("ranman: not started; run 'ranman start' to mark it as reading");
         } else {
-            println!("Nothing to read!")
+            println!("Nothing to read. Did you read all pages?")
         }
     }
     Ok(())
+}
+
+fn history(app: &App) {
+    let mut s = String::new();
+    for e in &app
+        .entries
+        .iter()
+        .filter(|e| e.status != Status::Unread)
+        .rev()
+        .collect::<Vec<_>>()
+    {
+        s += &format!("{}({})\n", e.name, e.section)
+    }
+    println!("{}", s);
+}
+
+fn peek(app: &App) {
+    if let Some(next) = app
+        .entries
+        .iter()
+        .find(|e| app.selected(e) && e.status == Status::Unread)
+    {
+        println!("{} {}", next.section, next.name);
+    } else {
+        println!("Nothing to read. Did you read all pages?")
+    }
+}
+
+fn pile(app: &App) {
+    let mut s = String::new();
+    for e in &app
+        .entries
+        .iter()
+        .filter(|e| e.status == Status::Reading)
+        .rev()
+        .collect::<Vec<_>>()
+    {
+        s += &format!("{}({})\n", e.name, e.section)
+    }
+    if (s == "") {
+        println!("Pile is empty.");
+    } else {
+        print!("{}", s);
+    }
 }
 
 fn state_path() -> Option<PathBuf> {
