@@ -11,48 +11,20 @@ const APP_VERSION: &str = "1";
 
 fn process_subcommand(cmd: &str, app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     match cmd {
-        "help" => {
-            show_help();
-            Ok(())
-        }
-        "info" => {
-            info(app)?;
-            Ok(())
-        }
-        "start" => {
-            start(app)?;
-            Ok(())
-        }
-        "history" => {
-            history(app);
-            Ok(())
-        }
-        "peek" => {
-            peek(app);
-            Ok(())
-        }
-        "pile" => {
-            pile(app);
-            Ok(())
-        }
-        "done" => {
-            done(app)?;
-            Ok(())
-        }
-        &_ => {
-            unknown_command();
-            Ok(())
-        }
+        "help" => show_help(),
+        "info" => info(app),
+        "start" => start(app),
+        "history" => history(app),
+        "peek" => peek(app),
+        "pile" => pile(app),
+        "done" => done(app),
+        &_ => Err("unknown command".into()),
     }
 }
 
-fn show_help() {
+fn show_help() -> Result<(), Box<dyn std::error::Error>> {
     println!("USAGE: help");
-}
-
-fn unknown_command() {
-    println!("Unknown command");
-    show_help();
+    Ok(())
 }
 
 fn man_paths() -> Vec<PathBuf> {
@@ -326,13 +298,20 @@ impl Display for ParsingError {
         }
     }
 }
+fn main() {
+    if let Err(e) = run() {
+        eprintln!("ranman: {e}");
+        std::process::exit(1);
+    }
+}
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+
+fn run() -> Result<(), Box<dyn std::error::Error>> {
     // This should never fail under normal conditions
     let state_path = match state_path() {
         Some(f) => f,
         None => {
-            eprintln!("ranman: Can't find state_file location.");
+            eprintln!("can't find state_file location.");
             std::process::exit(1);
         }
     };
@@ -456,15 +435,15 @@ fn ranman(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     } else {
         if let Some(i) = app.next_idx() {
             print!("{} {}", app.entries[i].section, app.entries[i].name);
-            eprintln!("ranman: not started; run 'ranman start' to mark it as reading");
+            eprintln!("not started; run 'ranman start' to mark it as reading");
         } else {
-            println!("Nothing to read. Did you read all pages?")
+            return Err("no unread pages in the selected sections".into())
         }
     }
     Ok(())
 }
 
-fn history(app: &App) {
+fn history(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     let mut s = String::new();
     for e in &app
         .entries
@@ -476,36 +455,32 @@ fn history(app: &App) {
         s += &format!("{}({})\n", e.name, e.section)
     }
     println!("{}", s);
+    Ok(())
 }
 
-fn peek(app: &App) {
-    if let Some(next) = app
-        .entries
-        .iter()
-        .find(|e| app.selected(e) && e.status == Status::Unread)
-    {
-        println!("{} {}", next.section, next.name);
-    } else {
-        println!("Nothing to read. Did you read all pages?")
-    }
+fn peek(app: &App) -> Result<(), Box<dyn std::error::Error>> {
+    let i = app
+        .next_idx()
+        .ok_or("no unread pages in the selected sections")?;
+    println!("{} {}", app.entries[i].section, app.entries[i].name);
+    Ok(())
 }
 
-fn pile(app: &App) {
-    let mut s = String::new();
-    for e in &app
+fn pile(app: &App) -> Result<(), Box<dyn std::error::Error>> {
+    let mut any = false;
+    for e in app
         .entries
         .iter()
-        .filter(|e| e.status == Status::Reading)
         .rev()
-        .collect::<Vec<_>>()
+        .filter(|e| e.status == Status::Reading)
     {
-        s += &format!("{}({})\n", e.name, e.section)
+        println!("{}({})", e.name, e.section);
+        any = true;
     }
-    if (s == "") {
-        println!("Pile is empty.");
-    } else {
-        print!("{}", s);
+    if !any {
+        eprintln!("Pile is empty.");
     }
+    Ok(())
 }
 
 fn state_path() -> Option<PathBuf> {
