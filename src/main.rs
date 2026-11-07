@@ -186,7 +186,7 @@ impl App {
     fn save_to_file(&self) -> Result<(), Error> {
         let mut text = String::new();
 
-        text += &format!("#ranman {}", APP_VERSION);
+        text += &format!("#ranman {}\n", APP_VERSION);
         text += &format!("#order {}\n", self.order.to_string());
 
         for e in &self.entries {
@@ -225,7 +225,7 @@ impl App {
     fn next_idx(&self) -> Option<usize> {
         self.entries
             .iter()
-            .rposition(|e| e.status == Status::Unread && self.selected(e))
+            .position(|e| e.status == Status::Unread && self.selected(e))
     }
 
     fn current_idx(&self) -> Option<usize> {
@@ -274,7 +274,7 @@ impl App {
 
         let entries = text
             .lines()
-            .filter(|l| !l.starts_with("#") && l.is_empty())
+            .filter(|l| !l.starts_with("#") && !l.is_empty())
             .map(|line| {
                 let pair = line.split_once(" ").unwrap();
 
@@ -404,6 +404,11 @@ fn info(app: &App) -> Result<(), Box<dyn std::error::Error>> {
         if e.status != Status::Unread {
             s.read += 1;
         }
+    }
+
+    s += "by section (* = selected):\n";
+    for (k, v) in by_section {
+        s += &format!("  {k} {v}\n")
     }
 
     println!("{}", s);
