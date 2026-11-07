@@ -195,7 +195,7 @@ impl App {
     fn count_status(&self, status: Status) -> usize {
         self.entries
             .iter()
-            // .filter(|e| e.s)
+            .filter(|e| self.sections.contains(&e.section))
             .filter(|e| e.status == status)
             .count()
     }
@@ -214,6 +214,19 @@ impl App {
             Status::Reading => 2,
             Status::Unread => 3,
         });
+    }
+
+    fn next(&self) -> Option<&Entry> {
+        self.entries
+            .iter()
+            .filter(|e| self.sections.contains(&e.section))
+            .find(|e| e.status == Status::Unread)
+    }
+    fn current(&self) -> Option<&Entry> {
+        self.entries
+            .iter()
+            .filter(|e| self.sections.contains(&e.section))
+            .rfind(|e| e.status == Status::Reading)
     }
 
     fn generate(
@@ -258,7 +271,7 @@ impl App {
         };
 
         let entries = text.lines().skip(2).map(|line| {
-            if line.is_empty(){
+            if line.is_empty() {
                 // return Err(ParsingError::EmptyLine)
                 panic!("empty line");
             }
@@ -300,14 +313,13 @@ impl App {
 
 #[derive(Debug, Clone)]
 enum ParsingError {
-    EmptyLine
+    EmptyLine,
 }
 impl Display for ParsingError {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         match self {
-            ParsingError::EmptyLine =>  write!(f, "State file contains empty line")
+            ParsingError::EmptyLine => write!(f, "State file contains empty line"),
         }
-
     }
 }
 
@@ -364,14 +376,23 @@ fn info(app: App) {
         reading
     );
 
-    s += "current: XXXXX\n";
-    s += "next: XXXXX\n";
+    if let Some(next) = app.current() {
+        s += &format!("current: {}({})\n", next.name, next.section);
+    } else {
+        s += "next: (no current)\n\n";
+    }
+
+    if let Some(next) = app.next() {
+        s += &format!("next: {}({})\n", next.name, next.section);
+    } else {
+        s += "next: (no next)\n";
+    }
 
     let entries = app.entries.iter().fold(String::new(), |acc, e| {
         format!("{}\n{} {}({})", acc, e.status, e.name, e.section)
     });
 
-    s += &entries;
+    // s += &entries;
 
     println!("{}", s);
 }
