@@ -1,11 +1,10 @@
 use rand::prelude::SliceRandom;
 use regex::Regex;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::fmt::{Display, Formatter};
-use std::fs::{DirEntry, create_dir_all, read_dir, read_to_string, rename};
+use std::fs::{DirEntry, create_dir_all, read_to_string, rename};
 use std::io::Error;
-use std::ops::DerefMut;
 use std::path::PathBuf;
 
 const APP_VERSION: &str = "1";
@@ -209,7 +208,7 @@ impl App {
     fn count_status(&self, status: Status) -> usize {
         self.entries
             .iter()
-            .filter(|e| self.sections.contains(&e.section))
+            .filter(|e| self.selected(e))
             .filter(|e| e.status == status)
             .count()
     }
@@ -363,16 +362,18 @@ impl Display for SectionInfo {
 
 fn info(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     let mut s = String::new();
-    s += &format!("file: {}\n", app.path.as_path().to_string_lossy());
-    s += &format!("order: {}\n", app.order);
-    s += &format!("sections: {}\n", app.sections_string());
+    let p = 9usize;
+    s += &format!("{:p$} {}\n", "file:", app.path.as_path().to_string_lossy());
+    s += &format!("{:p$} {}\n", "order:", app.order);
+    s += &format!("{:p$} {}\n", "sections:", app.sections_string());
 
     let done = app.count_status(Status::Done);
     let reading = app.count_status(Status::Reading);
     let unread = app.count_status(Status::Unread);
     let total = done + reading + unread;
     s += &format!(
-        "read: {}/{} ({} done, {} reading)\n",
+        "{:p$} {}/{} ({} done, {} reading)\n",
+        "read:",
         done + reading,
         total,
         done,
@@ -381,20 +382,20 @@ fn info(app: &App) -> Result<(), Box<dyn std::error::Error>> {
 
     if let Some(i) = app.current_idx() {
         s += &format!(
-            "current: {}({})\n",
-            app.entries[i].name, app.entries[i].section
+            "{:p$} {}({})\n",
+            "current:", app.entries[i].name, app.entries[i].section
         );
     } else {
-        s += "current: -\n";
+        s += &format!("{:p$}: -\n", "current");
     }
 
     if let Some(i) = app.next_idx() {
         s += &format!(
-            "next: {}({})\n",
-            app.entries[i].name, app.entries[i].section
+            "{:p$} {}({})\n",
+            "next:", app.entries[i].name, app.entries[i].section
         );
     } else {
-        s += "next: (no next)\n";
+        s += &format!("{:p$}: -\n", "next");
     }
 
     let mut by_section: BTreeMap<&str, SectionInfo> = BTreeMap::new();
@@ -408,10 +409,10 @@ fn info(app: &App) -> Result<(), Box<dyn std::error::Error>> {
 
     s += "by section (* = selected):\n";
     for (k, v) in by_section {
-        s += &format!("  {k} {v}\n")
+        s += &format!("  {:6} {}\n", k, v)
     }
 
-    println!("{}", s);
+    print!("{}", s);
 
     Ok(())
 }
