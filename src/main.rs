@@ -5,9 +5,10 @@ use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::fs::{DirEntry, create_dir_all, read_dir, read_to_string, rename};
 use std::io::Error;
+use std::ops::DerefMut;
 use std::path::PathBuf;
 
-fn process_subcommand(cmd: &str, app: App) -> Result<(), Box<dyn std::error::Error>> {
+fn process_subcommand(cmd: &str, app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     match cmd {
         "help" => {
             show_help();
@@ -15,6 +16,10 @@ fn process_subcommand(cmd: &str, app: App) -> Result<(), Box<dyn std::error::Err
         }
         "info" => {
             info(app);
+            Ok(())
+        },
+        "start" => {
+            start(app)?;
             Ok(())
         }
         &_ => {
@@ -156,12 +161,25 @@ struct Entry {
     section: String,
 }
 
+impl Entry {
+    fn read(&mut self) {
+        self.status = Status::Reading;
+    }
+    fn unread(&mut self) {
+        self.status = Status::Unread;
+    }
+    fn done(&mut self) {
+        self.status = Status::Done;
+    }
+}
+
 struct App {
     path: PathBuf,
     order: Order,
     entries: Vec<Entry>,
     sections: HashSet<String>,
 }
+
 
 impl App {
     fn save_to_file(&self) -> Result<(), Error> {
@@ -216,9 +234,15 @@ impl App {
         });
     }
 
-    fn next(&self) -> Option<&Entry> {
+    // fn next(&self) -> Option<&Entry> {
+    //     self.entries
+    //         .iter()
+    //         .filter(|e| self.sections.contains(&e.section))
+    //         .find(|e| e.status == Status::Unread)
+    // }
+    fn next(&mut self) -> Option<&mut Entry> {
         self.entries
-            .iter()
+            .iter_mut()
             .filter(|e| self.sections.contains(&e.section))
             .find(|e| e.status == Status::Unread)
     }
@@ -350,7 +374,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let subcommand = std::env::args().nth(1);
     match subcommand {
-        Some(cmd) => process_subcommand(&cmd, app),
+        Some(cmd) => process_subcommand(&cmd, &mut app),
         None => {
             show_help();
             Ok(())
@@ -358,7 +382,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
-fn info(app: App) {
+fn info(app: &mut App) {
     let mut s = String::new();
     s += &format!("file: {}\n", app.path.as_path().to_string_lossy());
     s += &format!("order: {}\n", app.order);
@@ -376,8 +400,8 @@ fn info(app: App) {
         reading
     );
 
-    if let Some(next) = app.current() {
-        s += &format!("current: {}({})\n", next.name, next.section);
+    if let Some(current) = app.current() {
+        s += &format!("current: {}({})\n", current.name, current.section);
     } else {
         s += "next: (no current)\n\n";
     }
@@ -395,6 +419,14 @@ fn info(app: App) {
     // s += &entries;
 
     println!("{}", s);
+}
+
+fn start(app: &mut App) -> Result<(), Error> {
+    if let Some(current) = app.next() {
+        current.read();
+    }
+    app.sort_by_status();
+    Ok(app.save_to_file()?)
 }
 
 fn state_path() -> Option<PathBuf> {
