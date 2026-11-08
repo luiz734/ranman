@@ -1,5 +1,5 @@
-use crate::{App, Result};
 use crate::app::Status;
+use crate::{App, Result};
 
 pub(crate) fn history(app: &App, numbered: bool) -> Result<()> {
     for (i, e) in &app
