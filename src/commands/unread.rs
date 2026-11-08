@@ -102,24 +102,31 @@ fn vec_from_arg(app: &App, arg: &UnreadArg) -> Result<Vec<usize>, Box<dyn std::e
 }
 
 fn get_arg(args: &Args) -> Result<UnreadArg, Box<dyn std::error::Error>> {
+    let mut provided: Vec<UnreadArg> = vec![];
+
     if args.all {
-        return Ok(UnreadArg::All);
+        provided.push(UnreadArg::All);
     }
 
     if let Some(n) = args.index {
-        return Ok(UnreadArg::Index(n));
+        provided.push(UnreadArg::Index(n));
     };
 
-    let p = args
-        .positional
-        .first()
-        .ok_or("specify a name, an index, amount to pop or --all")?;
+    if let Some(p) = args.positional.first() {
+        if let Ok(n) = p.parse::<usize>() {
+            provided.push(UnreadArg::Pop(n));
+        } else {
+            provided.push(UnreadArg::Name(p.to_owned()));
+        }
+    }
 
-    if let Ok(n) = p.parse::<usize>() {
-        return Ok(UnreadArg::Pop(n));
-    };
-
-    Ok(UnreadArg::Name(p.to_owned()))
+    match provided.len() {
+        0 => Err("specify a name, an index, amount to pop or --all"
+            .to_string()
+            .into()),
+        1 => Ok(provided.into_iter().next().unwrap()),
+        _ => Err("invalid combination".to_string().into()),
+    }
 }
 
 fn confirm_action() -> Result<(), Box<dyn std::error::Error>> {
