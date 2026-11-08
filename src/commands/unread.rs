@@ -14,19 +14,20 @@ pub fn handle_unread(app: &mut App, args: &Args) -> Result<(), Box<dyn std::erro
     let arg = get_arg(args)?;
     let mut indexes = vec_from_arg(app, arg)?;
 
+    if indexes.is_empty() {
+        return Err("no candidates to unread".to_owned().into());
+    }
+
+    unread(app, &mut indexes)
+}
+
+fn unread(app: &mut App, indexes: &mut Vec<usize>) -> Result<(), Box<dyn std::error::Error>> {
     // If we remove index i and j with i < j, the indexes will shift.
     // Remove larger indexes first.
     indexes.sort_by(|a, b| b.cmp(a));
 
-    unread(app, indexes)
-}
-
-fn unread(app: &mut App, indexes: Vec<usize>) -> Result<(), Box<dyn std::error::Error>> {
-    if !indexes.is_sorted_by(|a, b| a > b) {
-        return Err("Indexes are unsorted (not user fault).".into());
-    }
     for index in indexes {
-        let mut e = app.entries.remove(index);
+        let mut e = app.entries.remove(*index);
         e.unread();
         let boundary = app
             .entries
@@ -35,14 +36,16 @@ fn unread(app: &mut App, indexes: Vec<usize>) -> Result<(), Box<dyn std::error::
             .unwrap_or(app.entries.len());
         let label = format!("{}({})", e.name, e.section);
         app.entries.insert(boundary, e);
-        app.save_to_file()?;
         println!("unread: {}", label);
     }
+    app.save_to_file()?;
     Ok(())
 }
 
 fn vec_from_arg(app: &App, arg: UnreadArg) -> Result<Vec<usize>, Box<dyn std::error::Error>> {
     match arg {
+        // We don't need to call unread for this
+        // Keep it for consistency only
         UnreadArg::All => Ok(app
             .entries
             .iter()
@@ -108,7 +111,7 @@ fn get_arg(args: &Args) -> Result<UnreadArg, Box<dyn std::error::Error>> {
         .first()
         .ok_or("specify a name, an index, amount to pop or --all")?;
 
-    if let Some(n) = p.parse::<usize>().ok() {
+    if let Ok(n) = p.parse::<usize>() {
         return Ok(UnreadArg::Pop(n));
     };
 
@@ -124,8 +127,8 @@ fn confirm_action() -> Result<(), Box<dyn std::error::Error>> {
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
 
-    match input.trim() {
-        "yes" | "Y" | "y" => Ok(()),
+    match input.trim().to_lowercase().as_str() {
+        "yes" | "y" => Ok(()),
         _ => Err("Canceled by user".to_string().into()),
     }
 }
