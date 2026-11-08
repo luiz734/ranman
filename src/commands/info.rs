@@ -59,7 +59,7 @@ pub fn info(app: &App) -> Result<()> {
     for e in &app.entries {
         let s = by_section.entry(e.section.as_str()).or_default();
         s.total += 1;
-        if e.status != Status::Unread {
+        if e.read_or_done() {
             s.read += 1;
         }
     }

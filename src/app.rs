@@ -2,7 +2,9 @@ use crate::generate;
 use std::fmt::{Display, Formatter};
 use std::fs::{create_dir_all, rename};
 use std::io::Error;
+use std::iter::Enumerate;
 use std::path::PathBuf;
+use std::slice::Iter;
 
 const APP_VERSION: &str = "1";
 
@@ -21,8 +23,8 @@ impl Display for Order {
 }
 
 pub struct Entry {
-    pub(crate) status: Status,
-    pub(crate) name: String,
+    pub status: Status,
+    pub name: String,
     pub section: String,
 }
 
@@ -36,6 +38,9 @@ impl Entry {
     pub fn done(&mut self) {
         self.status = Status::Done;
     }
+    pub fn read_or_done(&self) -> bool {
+        self.status != Status::Unread
+    }
 }
 
 pub struct App {
@@ -46,6 +51,10 @@ pub struct App {
 }
 
 impl App {
+    pub fn entries_enum(&self) -> Enumerate<Iter<'_, Entry>> {
+        self.entries.iter().enumerate()
+    }
+
     pub fn save_to_file(&self) -> Result<(), Error> {
         let mut text = String::new();
 

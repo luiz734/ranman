@@ -1,13 +1,11 @@
-use crate::{App};
-use crate::app::Status;
+use crate::App;
 use crate::Result;
+use crate::app::Status;
 
 pub fn history(app: &App, numbered: bool) -> Result<()> {
     for (i, e) in &app
-        .entries
-        .iter()
-        .enumerate()
-        .filter(|(_, e)| e.status != Status::Unread)
+        .entries_enum()
+        .filter(|(_, e)| e.read_or_done())
         .rev()
         .collect::<Vec<_>>()
     {

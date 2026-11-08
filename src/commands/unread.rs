@@ -1,6 +1,5 @@
-use crate::Result;
 use crate::args::Args;
-use crate::{App, Status};
+use crate::{App, Result, Status};
 use regex::Regex;
 use std::io;
 use std::io::Write;
@@ -31,19 +30,18 @@ pub fn handle_unread(app: &mut App, args: &Args) -> Result<()> {
 fn unread(app: &mut App, indexes: &mut Vec<usize>) -> Result<()> {
     // If we remove index i and j with i < j, the indexes will shift.
     // Remove larger indexes first.
-    indexes.sort_by(|a, b| b.cmp(a));
+    indexes.sort_unstable_by(|a, b| b.cmp(a));
 
     for index in indexes {
-        let mut e = app.entries.remove(*index);
-        e.unread();
+        let mut entry = app.entries.remove(*index);
+        entry.unread();
         let boundary = app
             .entries
             .iter()
             .position(|e| e.status == Status::Unread)
             .unwrap_or(app.entries.len());
-        let label = format!("{}({})", e.name, e.section);
-        app.entries.insert(boundary, e);
-        println!("unread: {}", label);
+        println!("unread: {}({})", entry.name, entry.section);
+        app.entries.insert(boundary, entry);
     }
     app.save_to_file()?;
     Ok(())
@@ -54,33 +52,26 @@ fn vec_from_arg(app: &App, arg: &UnreadArg) -> Result<Vec<usize>> {
         // We don't need to call unread for this
         // Keep it for consistency only
         UnreadArg::All => Ok(app
-            .entries
-            .iter()
-            .enumerate()
-            .filter(|(_, e)| e.status != Status::Unread)
+            .entries_enum()
+            .filter(|(_, e)| e.read_or_done())
             .map(|(i, _)| i)
-            .collect::<Vec<usize>>()),
+            .collect()),
 
         UnreadArg::Index(n) => {
             let i = n.checked_sub(1).ok_or("indices start at 1")?;
             match app.entries.get(i) {
-                Some(e) if e.status != Status::Unread => Ok(vec![i]),
+                Some(e) if e.read_or_done() => Ok(vec![i]),
                 _ => Err(format!("no such index: {n} (see 'ranman history -n')").into()),
             }
         }
 
-        UnreadArg::Pop(count) => {
-            let v = app
-                .entries
-                .iter()
-                .enumerate()
-                .filter(|(_, e)| e.status != Status::Unread)
-                .rev()
-                .take(*count)
-                .map(|(i, _)| i)
-                .collect::<Vec<_>>();
-            Ok(v)
-        }
+        UnreadArg::Pop(count) => Ok(app
+            .entries_enum()
+            .filter(|(_, e)| e.read_or_done())
+            .rev()
+            .take(*count)
+            .map(|(i, _)| i)
+            .collect()),
 
         UnreadArg::Name(a) => {
             let re = Regex::new(r"([\w\-_:.]+)(\(\w+\))?")?;
@@ -89,17 +80,12 @@ fn vec_from_arg(app: &App, arg: &UnreadArg) -> Result<Vec<usize>> {
             let name = caps.get(1).map_or(Some(a.as_str()), |m| Some(m.as_str()));
             let section = caps.get(2).map_or(None, |m| Some(m.as_str()));
 
-            match app
-                .entries
-                .iter()
-                .enumerate()
-                .filter(|(_, e)| e.status != Status::Unread && e.name == name.unwrap())
+            app.entries_enum()
+                .filter(|(_, e)| e.read_or_done() && e.name == name.unwrap())
                 .filter(|(_, e)| section.is_none_or(|s| e.section == s))
                 .min_by_key(|(_, e)| e.section.as_str())
-            {
-                Some((i, _)) => Ok(vec![i]),
-                None => Err(format!("not in the read list: {a}").into()),
-            }
+                .map(|(i, _)| vec![i])
+                .ok_or_else(|| format!("not in the read list: {a}").into())
         }
     }
 }
@@ -113,13 +99,13 @@ fn get_arg(args: &Args) -> Result<UnreadArg> {
 
     if let Some(n) = args.index {
         provided.push(UnreadArg::Index(n));
-    };
+    }
 
     if let Some(p) = args.positional.first() {
         if let Ok(n) = p.parse::<usize>() {
             provided.push(UnreadArg::Pop(n));
         } else {
-            provided.push(UnreadArg::Name(p.to_owned()));
+            provided.push(UnreadArg::Name(p.clone()));
         }
     }
 
@@ -128,7 +114,7 @@ fn get_arg(args: &Args) -> Result<UnreadArg> {
             .to_string()
             .into()),
         1 => Ok(provided.into_iter().next().unwrap()),
-        _ => Err("invalid combination".to_string().into()),
+        _ => Err("invalid combination".into()),
     }
 }
 
@@ -143,6 +129,6 @@ fn confirm_action() -> Result<()> {
 
     match input.trim().to_lowercase().as_str() {
         "yes" | "y" => Ok(()),
-        _ => Err("Canceled by user".to_string().into()),
+        _ => Err("canceled by user".into()),
     }
 }

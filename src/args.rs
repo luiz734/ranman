@@ -41,7 +41,7 @@ pub fn parse_args(app: &App) -> Result<Args, Box<dyn std::error::Error>> {
             }
             "--sections" => {
                 let values = it.next().ok_or("usage is --sections a,b,c")?;
-                let values = values.split(",").collect::<Vec<_>>();
+                let values = values.split(",").collect();
                 valid_sections(app, &values)?;
                 args.sections = Some(values.iter().map(|s| s.to_string()).collect());
             }
