@@ -9,155 +9,6 @@ use std::path::PathBuf;
 
 const APP_VERSION: &str = "1";
 
-fn process_subcommand(cmd: &str, app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
-    match cmd {
-        "help" => show_help(),
-        "info" => info(app),
-        "start" => start(app),
-        "history" => history(app),
-        "peek" => peek(app),
-        "pile" => pile(app),
-        "done" => done(app),
-        &_ => Err("unknown command".into()),
-    }
-}
-
-fn show_help() -> Result<(), Box<dyn std::error::Error>> {
-    println!("USAGE: help");
-    Ok(())
-}
-
-fn man_paths() -> Vec<PathBuf> {
-    let output = std::process::Command::new("manpath").output();
-    let mut paths: Vec<PathBuf> = vec![];
-
-    match output {
-        Ok(output) => {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for path in stdout.trim().split(':') {
-                paths.push(PathBuf::from(path));
-            }
-        }
-        Err(_) => {
-            let default_paths = String::from("/usr/share/man:/usr/local/share/man");
-            eprintln!(
-                "Could not find manpage directory. Defaulting to {}",
-                default_paths
-            );
-            for path in default_paths.trim().split(':') {
-                paths.push(PathBuf::from(path));
-            }
-        }
-    }
-    paths
-}
-
-fn generate(man_paths: Vec<PathBuf>, random: bool) -> Vec<Entry> {
-    let mut tree: BTreeSet<String> = BTreeSet::new();
-
-    let re = Regex::new(r"man\d+$").unwrap();
-    let is_man_subdir =
-        |d: &DirEntry| d.path().is_dir() && re.is_match(d.path().as_path().to_str().unwrap());
-
-    let re = Regex::new(r"\.(gz|xz|bz2|zst)$").unwrap();
-    let is_compressed_page = |d: &DirEntry| re.is_match(d.path().as_path().to_str().unwrap());
-
-    man_paths
-        .iter()
-        .filter(|p| p.is_dir())
-        .flat_map(|p| p.read_dir())
-        .for_each(|r| {
-            r.flatten()
-                .filter(is_man_subdir)
-                .map(|d| d.path())
-                .flat_map(|p| p.read_dir())
-                .for_each(|r| {
-                    r.flatten()
-                        .filter(is_compressed_page)
-                        .map(|d| {
-                            String::from(d.path().to_str().unwrap().rsplit_once(".").unwrap().0)
-                        })
-                        .for_each(|p| {
-                            tree.insert(String::from(p));
-                        });
-                });
-        });
-
-    let mut entries: Vec<Entry> = vec![];
-    for item in &tree {
-        let base_name = PathBuf::from(item)
-            .file_name()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_string();
-        let pair = base_name.rsplit_once(".");
-        if let Some(x) = pair {
-            let entry = Entry {
-                name: x.0.to_string(),
-                section: x.1.to_string(),
-                status: Status::Unread,
-            };
-            entries.push(entry);
-        }
-    }
-
-    if random {
-        entries.shuffle(&mut rand::rng())
-    }
-
-    entries
-}
-
-#[derive(PartialEq, Eq)]
-enum Status {
-    Done,
-    Reading,
-    Unread,
-}
-
-impl Display for Status {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Status::Reading => write!(f, "R"),
-            Status::Unread => write!(f, "."),
-            Status::Done => write!(f, "D"),
-        }
-    }
-}
-
-enum Order {
-    Random,
-    Alphabetical,
-}
-
-impl Display for Order {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Order::Random => write!(f, "random"),
-            Order::Alphabetical => write!(f, "alphabetical"),
-        }
-    }
-}
-
-struct Entry {
-    status: Status,
-    name: String,
-    section: String,
-}
-
-impl Entry {
-    fn read(&mut self) {
-        self.status = Status::Reading;
-    }
-    fn unread(&mut self) {
-        self.status = Status::Unread;
-    }
-    fn done(&mut self) {
-        self.status = Status::Done;
-    }
-}
-
 struct App {
     path: PathBuf,
     order: Order,
@@ -287,6 +138,55 @@ impl App {
     }
 }
 
+#[derive(PartialEq, Eq)]
+enum Status {
+    Done,
+    Reading,
+    Unread,
+}
+
+impl Display for Status {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Status::Reading => write!(f, "R"),
+            Status::Unread => write!(f, "."),
+            Status::Done => write!(f, "D"),
+        }
+    }
+}
+
+enum Order {
+    Random,
+    Alphabetical,
+}
+
+impl Display for Order {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Order::Random => write!(f, "random"),
+            Order::Alphabetical => write!(f, "alphabetical"),
+        }
+    }
+}
+
+struct Entry {
+    status: Status,
+    name: String,
+    section: String,
+}
+
+impl Entry {
+    fn read(&mut self) {
+        self.status = Status::Reading;
+    }
+    fn unread(&mut self) {
+        self.status = Status::Unread;
+    }
+    fn done(&mut self) {
+        self.status = Status::Done;
+    }
+}
+
 #[derive(Debug, Clone)]
 enum ParsingError {
     EmptyLine,
@@ -298,13 +198,25 @@ impl Display for ParsingError {
         }
     }
 }
+
+#[derive(Default)]
+struct SectionInfo {
+    total: usize,
+    read: usize,
+}
+
+impl Display for SectionInfo {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{}/{}", self.read, self.total)
+    }
+}
+
 fn main() {
     if let Err(e) = run() {
         eprintln!("ranman: {e}");
         std::process::exit(1);
     }
 }
-
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     // This should never fail under normal conditions
@@ -339,16 +251,104 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
-#[derive(Default)]
-struct SectionInfo {
-    total: usize,
-    read: usize,
+fn process_subcommand(cmd: &str, app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
+    match cmd {
+        "help" => show_help(),
+        "info" => info(app),
+        "start" => start(app),
+        "history" => history(app),
+        "peek" => peek(app),
+        "pile" => pile(app),
+        "done" => done(app),
+        &_ => Err("unknown command".into()),
+    }
 }
 
-impl Display for SectionInfo {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{}/{}", self.read, self.total)
+fn show_help() -> Result<(), Box<dyn std::error::Error>> {
+    println!("USAGE: help");
+    Ok(())
+}
+
+fn man_paths() -> Vec<PathBuf> {
+    let output = std::process::Command::new("manpath").output();
+    let mut paths: Vec<PathBuf> = vec![];
+
+    match output {
+        Ok(output) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for path in stdout.trim().split(':') {
+                paths.push(PathBuf::from(path));
+            }
+        }
+        Err(_) => {
+            let default_paths = String::from("/usr/share/man:/usr/local/share/man");
+            eprintln!(
+                "Could not find manpage directory. Defaulting to {}",
+                default_paths
+            );
+            for path in default_paths.trim().split(':') {
+                paths.push(PathBuf::from(path));
+            }
+        }
     }
+    paths
+}
+
+fn generate(man_paths: Vec<PathBuf>, random: bool) -> Vec<Entry> {
+    let mut tree: BTreeSet<String> = BTreeSet::new();
+
+    let re = Regex::new(r"man\d+$").unwrap();
+    let is_man_subdir =
+        |d: &DirEntry| d.path().is_dir() && re.is_match(d.path().as_path().to_str().unwrap());
+
+    let re = Regex::new(r"\.(gz|xz|bz2|zst)$").unwrap();
+    let is_compressed_page = |d: &DirEntry| re.is_match(d.path().as_path().to_str().unwrap());
+
+    man_paths
+        .iter()
+        .filter(|p| p.is_dir())
+        .flat_map(|p| p.read_dir())
+        .for_each(|r| {
+            r.flatten()
+                .filter(is_man_subdir)
+                .map(|d| d.path())
+                .flat_map(|p| p.read_dir())
+                .for_each(|r| {
+                    r.flatten()
+                        .filter(is_compressed_page)
+                        .map(|d| {
+                            String::from(d.path().to_str().unwrap().rsplit_once(".").unwrap().0)
+                        })
+                        .for_each(|p| {
+                            tree.insert(String::from(p));
+                        });
+                });
+        });
+
+    let mut entries: Vec<Entry> = vec![];
+    for item in &tree {
+        let base_name = PathBuf::from(item)
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+        let pair = base_name.rsplit_once(".");
+        if let Some(x) = pair {
+            let entry = Entry {
+                name: x.0.to_string(),
+                section: x.1.to_string(),
+                status: Status::Unread,
+            };
+            entries.push(entry);
+        }
+    }
+
+    if random {
+        entries.shuffle(&mut rand::rng())
+    }
+
+    entries
 }
 
 fn info(app: &App) -> Result<(), Box<dyn std::error::Error>> {
@@ -437,7 +437,7 @@ fn ranman(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
             print!("{} {}", app.entries[i].section, app.entries[i].name);
             eprintln!("not started; run 'ranman start' to mark it as reading");
         } else {
-            return Err("no unread pages in the selected sections".into())
+            return Err("no unread pages in the selected sections".into());
         }
     }
     Ok(())
