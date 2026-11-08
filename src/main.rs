@@ -211,6 +211,13 @@ impl Display for SectionInfo {
     }
 }
 
+#[derive(Default)]
+struct Args {
+    cmd: Option<String>,
+    positional: Vec<String>,
+    numbered: bool,
+}
+
 fn main() {
     if let Err(e) = run() {
         eprintln!("ranman: {e}");
@@ -244,24 +251,42 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     // Redundant when just read
     app.save_to_file()?;
 
-    let subcommand = std::env::args().nth(1);
-    match subcommand {
-        Some(cmd) => process_subcommand(&cmd, &mut app),
-        None => ranman(&mut app),
+    let args = parse_args()?;
+    process_subcommand(&args, &mut app)?;
+    Ok(())
+}
+
+fn process_subcommand(args: &Args, app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
+    match args.cmd.as_deref() {
+        Some("help") => show_help(),
+        Some("info") => info(app),
+        Some("start") => start(app),
+        Some("history") => history(app, args.numbered),
+        Some("peek") => peek(app),
+        Some("pile") => pile(app),
+        Some("done") => done(app),
+        Some(_) => Err("unknown command".into()),
+        _ => Err("unknown command".into()),
     }
 }
 
-fn process_subcommand(cmd: &str, app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
-    match cmd {
-        "help" => show_help(),
-        "info" => info(app),
-        "start" => start(app),
-        "history" => history(app),
-        "peek" => peek(app),
-        "pile" => pile(app),
-        "done" => done(app),
-        &_ => Err("unknown command".into()),
+fn parse_args() -> Result<Args, Box<dyn std::error::Error>> {
+    let mut args = Args::default();
+    let mut it = std::env::args().skip(1);
+
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--numbered" => args.numbered = true,
+
+            s if s.starts_with('-') && s.len() > 1 => {
+                return Err(format!("unknown option {s}").into());
+            }
+            _ if args.cmd.is_none() => args.cmd = Some(a),
+            _ => args.positional.push(a),
+        }
     }
+
+    Ok(args)
 }
 
 fn show_help() -> Result<(), Box<dyn std::error::Error>> {
@@ -443,18 +468,22 @@ fn ranman(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn history(app: &App) -> Result<(), Box<dyn std::error::Error>> {
-    let mut s = String::new();
-    for e in &app
+fn history(app: &App, numbered: bool) -> Result<(), Box<dyn std::error::Error>> {
+    for (i, e) in &app
         .entries
         .iter()
-        .filter(|e| e.status != Status::Unread)
+        .enumerate()
+        .filter(|(_, e)| e.status != Status::Unread)
         .rev()
         .collect::<Vec<_>>()
     {
-        s += &format!("{}({})\n", e.name, e.section)
+        if numbered {
+            let s = if e.status == Status::Reading { "R" } else { "D" };
+            println!("{:4} {} {}({})", i, s, e.name, e.section)
+        } else {
+            println!("{}({})", e.name, e.section)
+        }
     }
-    println!("{}", s);
     Ok(())
 }
 
