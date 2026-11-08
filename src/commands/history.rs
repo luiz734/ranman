@@ -1,8 +1,7 @@
-use crate::App;
-use crate::Result;
+use crate::{App, Result};
 use crate::app::Status;
 
-pub fn history(app: &App, numbered: bool) -> Result<()> {
+pub(crate) fn history(app: &App, numbered: bool) -> Result<()> {
     for (i, e) in &app
         .entries_enum()
         .filter(|(_, e)| e.read_or_done())

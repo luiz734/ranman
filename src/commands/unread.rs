@@ -12,7 +12,7 @@ enum UnreadArg {
     Name(String),
 }
 
-pub fn handle_unread(app: &mut App, args: &Args) -> Result<()> {
+pub(crate) fn handle_unread(app: &mut App, args: &Args) -> Result<()> {
     let arg = get_arg(args)?;
     let mut indexes = vec_from_arg(app, &arg)?;
 

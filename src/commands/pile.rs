@@ -1,6 +1,6 @@
-use crate::{App, Status};
-use crate::Result;
-pub fn pile(app: &App, numbered: bool) -> Result<()> {
+use crate::{App, Status, Result};
+
+pub(crate) fn pile(app: &App, numbered: bool) -> Result<()> {
     let mut any = false;
     for (i, e) in app
         .entries

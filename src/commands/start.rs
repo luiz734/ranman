@@ -1,6 +1,6 @@
-use crate::{App, Status};
-use crate::Result;
-pub fn start(app: &mut App) -> Result<()> {
+use crate::{App, Status, Result};
+
+pub(crate) fn start(app: &mut App) -> Result<()> {
     let i = app
         .next_idx()
         .ok_or("no unread pages in the selected sections")?;

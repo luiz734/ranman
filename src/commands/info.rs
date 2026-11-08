@@ -17,7 +17,7 @@ impl Display for SectionInfo {
 }
 
 
-pub fn info(app: &App) -> Result<()> {
+pub(crate) fn info(app: &App) -> Result<()> {
     let mut s = String::new();
     let p = 9usize;
     s += &format!("{:p$} {}\n", "file:", app.path.as_path().to_string_lossy());

@@ -29,16 +29,16 @@ pub struct Entry {
 }
 
 impl Entry {
-    pub fn read(&mut self) {
+    pub(crate) fn read(&mut self) {
         self.status = Status::Reading;
     }
-    pub fn unread(&mut self) {
+    pub(crate) fn unread(&mut self) {
         self.status = Status::Unread;
     }
-    pub fn done(&mut self) {
+    pub(crate) fn done(&mut self) {
         self.status = Status::Done;
     }
-    pub fn read_or_done(&self) -> bool {
+    pub(crate) fn read_or_done(&self) -> bool {
         self.status != Status::Unread
     }
 }
@@ -51,11 +51,11 @@ pub struct App {
 }
 
 impl App {
-    pub fn entries_enum(&self) -> Enumerate<Iter<'_, Entry>> {
+    pub(crate) fn entries_enum(&self) -> Enumerate<Iter<'_, Entry>> {
         self.entries.iter().enumerate()
     }
 
-    pub fn save_to_file(&self) -> Result<(), Error> {
+    pub(crate) fn save_to_file(&self) -> Result<(), Error> {
         let mut text = String::new();
 
         text += &format!("#ranman {}\n", APP_VERSION);
@@ -133,7 +133,7 @@ impl App {
         })
     }
 
-    pub fn from_text(file: PathBuf, text: String, sections: Vec<String>) -> Result<App, Error> {
+    pub(crate) fn from_text(file: PathBuf, text: String, sections: Vec<String>) -> Result<App, Error> {
         let order = text
             .lines()
             .find(|line| line.starts_with("#order"))

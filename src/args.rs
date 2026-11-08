@@ -27,7 +27,7 @@ pub struct Args {
 }
 
 
-pub fn parse_args(app: &App) -> Result<Args, Box<dyn std::error::Error>> {
+pub(crate) fn parse_args(app: &App) -> Result<Args, Box<dyn std::error::Error>> {
     let mut args = Args::default();
     let mut it = std::env::args().skip(1);
 
