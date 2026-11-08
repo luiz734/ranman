@@ -3,6 +3,7 @@ use crate::{App, Status};
 use std::io;
 use std::io::Write;
 
+#[derive(Debug, PartialEq)]
 enum UnreadArg {
     All,
     Index(usize),
@@ -12,10 +13,14 @@ enum UnreadArg {
 
 pub fn handle_unread(app: &mut App, args: &Args) -> Result<(), Box<dyn std::error::Error>> {
     let arg = get_arg(args)?;
-    let mut indexes = vec_from_arg(app, arg)?;
+    let mut indexes = vec_from_arg(app, &arg)?;
 
     if indexes.is_empty() {
         return Err("no candidates to unread".to_owned().into());
+    }
+
+    if arg == UnreadArg::All {
+        confirm_action()?;
     }
 
     unread(app, &mut indexes)
@@ -42,7 +47,7 @@ fn unread(app: &mut App, indexes: &mut Vec<usize>) -> Result<(), Box<dyn std::er
     Ok(())
 }
 
-fn vec_from_arg(app: &App, arg: UnreadArg) -> Result<Vec<usize>, Box<dyn std::error::Error>> {
+fn vec_from_arg(app: &App, arg: &UnreadArg) -> Result<Vec<usize>, Box<dyn std::error::Error>> {
     match arg {
         // We don't need to call unread for this
         // Keep it for consistency only
@@ -69,7 +74,7 @@ fn vec_from_arg(app: &App, arg: UnreadArg) -> Result<Vec<usize>, Box<dyn std::er
                 .enumerate()
                 .filter(|(_, e)| e.status != Status::Unread)
                 .rev()
-                .take(count)
+                .take(*count)
                 .map(|(i, _)| i)
                 .collect::<Vec<_>>();
             Ok(v)
@@ -98,7 +103,6 @@ fn vec_from_arg(app: &App, arg: UnreadArg) -> Result<Vec<usize>, Box<dyn std::er
 
 fn get_arg(args: &Args) -> Result<UnreadArg, Box<dyn std::error::Error>> {
     if args.all {
-        confirm_action()?;
         return Ok(UnreadArg::All);
     }
 
