@@ -1,5 +1,6 @@
 use crate::args::Args;
 use crate::{App, Status};
+use regex::Regex;
 use std::io;
 use std::io::Write;
 
@@ -81,17 +82,18 @@ fn vec_from_arg(app: &App, arg: &UnreadArg) -> Result<Vec<usize>, Box<dyn std::e
         }
 
         UnreadArg::Name(a) => {
-            let (name, sec) = match a.rsplit_once('(') {
-                Some((n, s)) => (n, s.strip_suffix(')')),
-                None => (a.as_str(), None),
-            };
+            let re = Regex::new(r"([\w\-_:.]+)(\(\w+\))?")?;
+            let caps = re.captures(a).ok_or("no match")?;
+
+            let name = caps.get(1).map_or(Some(a.as_str()), |m| Some(m.as_str()));
+            let section = caps.get(2).map_or(None, |m| Some(m.as_str()));
 
             match app
                 .entries
                 .iter()
                 .enumerate()
-                .filter(|(_, e)| e.status != Status::Unread && e.name == name)
-                .filter(|(_, e)| sec.is_none_or(|s| e.section == s))
+                .filter(|(_, e)| e.status != Status::Unread && e.name == name.unwrap())
+                .filter(|(_, e)| section.is_none_or(|s| e.section == s))
                 .min_by_key(|(_, e)| e.section.as_str())
             {
                 Some((i, _)) => Ok(vec![i]),
