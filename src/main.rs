@@ -1,11 +1,11 @@
 use rand::prelude::SliceRandom;
 use regex::Regex;
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::fs::{DirEntry, create_dir_all, read_to_string, rename};
-use std::io::Error;
+use std::io::{Error, Write};
 use std::path::PathBuf;
+use std::{fmt, io};
 
 const APP_VERSION: &str = "1";
 
@@ -217,6 +217,7 @@ struct Args {
     positional: Vec<String>,
     numbered: bool,
     index: Option<usize>,
+    all: bool,
 }
 
 fn main() {
@@ -265,10 +266,7 @@ fn process_subcommand(args: &Args, app: &mut App) -> Result<(), Box<dyn std::err
         Some("history") => history(app, args.numbered),
         Some("peek") => peek(app),
         Some("pile") => pile(app, args.numbered),
-        Some("unread") => {
-            let i = find_target(app, args)?;
-            unread(app, i)
-        }
+        Some("unread") => handle_unread(app, args),
         Some("done") => done(app),
         Some(_) => Err("unknown command".into()),
         _ => Err("unknown command".into()),
@@ -282,6 +280,7 @@ fn parse_args() -> Result<Args, Box<dyn std::error::Error>> {
     while let Some(a) = it.next() {
         match a.as_str() {
             "--numbered" | "-n" => args.numbered = true,
+            "--all" => args.all = true,
             "--index" | "-i" => {
                 let index = it.next().ok_or("--index needs a number")?;
                 args.index = Some(index.parse().map_err(|_| format!("bad index: {index}"))?);
@@ -323,7 +322,7 @@ fn find_target(app: &mut App, args: &Args) -> Result<usize, Box<dyn std::error::
                     .map(|(i, e)| Ok(i))
                     .ok_or_else(|| format!("not in the read list: {a}"))?
             } else {
-                Err("remove needs a page name or --index N".into())
+                Err("remove needs a page name, --index N or --all".into())
             }
         }
     }
@@ -523,7 +522,7 @@ fn history(app: &App, numbered: bool) -> Result<(), Box<dyn std::error::Error>> 
             } else {
                 "D"
             };
-            println!("{:4} {} {}({})", i+1, s, e.name, e.section)
+            println!("{:4} {} {}({})", i + 1, s, e.name, e.section)
         } else {
             println!("{}({})", e.name, e.section)
         }
@@ -550,7 +549,7 @@ fn pile(app: &App, numbered: bool) -> Result<(), Box<dyn std::error::Error>> {
     {
         if numbered {
             let s = if e.status == Status::Reading { "R" } else { "" };
-            println!("{:4} {} {}({})", i+1, s, e.name, e.section)
+            println!("{:4} {} {}({})", i + 1, s, e.name, e.section)
         } else {
             println!("{}({})", e.name, e.section)
         }
@@ -562,18 +561,54 @@ fn pile(app: &App, numbered: bool) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn unread(app: &mut App, index: usize) -> Result<(), Box<dyn std::error::Error>> {
-    let mut e = app.entries.remove(index);
-    e.unread();
-    let boundary = app
-        .entries
-        .iter()
-        .position(|e| e.status == Status::Unread)
-        .unwrap_or(app.entries.len());
-    let label = format!("{}({})", e.name, e.section);
-    app.entries.insert(boundary, e);
-    app.save_to_file()?;
-    println!("unread: {}", label);
+fn handle_unread(app: &mut App, args: &Args) -> Result<(), Box<dyn std::error::Error>> {
+    let mut indexes: Vec<usize> = match args.all {
+        true => {
+            print!(
+                "This will remove ALL your reading progress.\nDo You really want to proceed? [y/N]: "
+            );
+            io::stdout().flush()?;
+
+            let mut input = String::new();
+            io::stdin().read_line(&mut input)?;
+
+            match input.trim() {
+                "yes" | "Y" | "y" => app
+                    .entries
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, e)| e.status != Status::Unread)
+                    .map(|(i, _)| i)
+                    .collect::<Vec<usize>>(),
+                _ => return Err("Canceled by user".to_string().into()),
+            }
+        }
+        false => vec![find_target(app, args)?],
+    };
+    // If we remove index I < J before the indexes will shift.
+    // Remove larger indexes first.
+    indexes.sort();
+    indexes.reverse();
+    unread(app, indexes)
+}
+
+fn unread(app: &mut App, indexes: Vec<usize>) -> Result<(), Box<dyn std::error::Error>> {
+    if !indexes.is_sorted_by(|a, b| a > b) {
+        return Err("Indexes are unsorted (not user fault).".into());
+    }
+    for index in indexes {
+        let mut e = app.entries.remove(index);
+        e.unread();
+        let boundary = app
+            .entries
+            .iter()
+            .position(|e| e.status == Status::Unread)
+            .unwrap_or(app.entries.len());
+        let label = format!("{}({})", e.name, e.section);
+        app.entries.insert(boundary, e);
+        app.save_to_file()?;
+        println!("unread: {}", label);
+    }
     Ok(())
 }
 
