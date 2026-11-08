@@ -216,6 +216,7 @@ struct Args {
     cmd: Option<String>,
     positional: Vec<String>,
     numbered: bool,
+    index: Option<usize>,
 }
 
 fn main() {
@@ -264,6 +265,10 @@ fn process_subcommand(args: &Args, app: &mut App) -> Result<(), Box<dyn std::err
         Some("history") => history(app, args.numbered),
         Some("peek") => peek(app),
         Some("pile") => pile(app, args.numbered),
+        Some("unread") => {
+            let i = find_target(app, args)?;
+            unread(app, i)
+        }
         Some("done") => done(app),
         Some(_) => Err("unknown command".into()),
         _ => Err("unknown command".into()),
@@ -276,7 +281,11 @@ fn parse_args() -> Result<Args, Box<dyn std::error::Error>> {
 
     while let Some(a) = it.next() {
         match a.as_str() {
-            "--numbered" => args.numbered = true,
+            "--numbered" | "-n" => args.numbered = true,
+            "--index" | "-i" => {
+                let index = it.next().ok_or("--index needs a number")?;
+                args.index = Some(index.parse().map_err(|_| format!("bad index: {index}"))?);
+            }
 
             s if s.starts_with('-') && s.len() > 1 => {
                 return Err(format!("unknown option {s}").into());
@@ -287,6 +296,37 @@ fn parse_args() -> Result<Args, Box<dyn std::error::Error>> {
     }
 
     Ok(args)
+}
+
+fn find_target(app: &mut App, args: &Args) -> Result<usize, Box<dyn std::error::Error>> {
+    match args.index {
+        Some(n) => {
+            let i = n.checked_sub(1).ok_or("indices start at 1")?;
+            match app.entries.get(i) {
+                Some(e) if e.status != Status::Unread => Ok(i),
+                _ => Err(format!("no such index: {n} (see 'ranman history -n')").into()),
+            }
+        }
+        None => {
+            if let Some(a) = args.positional.first() {
+                let (name, sec) = match a.rsplit_once('(') {
+                    Some((n, s)) => (n, s.strip_suffix(')')),
+                    None => (a.as_str(), None),
+                };
+
+                app.entries
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, e)| e.status != Status::Unread && e.name == name)
+                    .filter(|(_, e)| sec.is_none_or(|s| e.section == s))
+                    .min_by_key(|(_, e)| e.section.as_str())
+                    .map(|(i, e)| Ok(i))
+                    .ok_or_else(|| format!("not in the read list: {a}"))?
+            } else {
+                Err("remove needs a page name or --index N".into())
+            }
+        }
+    }
 }
 
 fn show_help() -> Result<(), Box<dyn std::error::Error>> {
@@ -483,7 +523,7 @@ fn history(app: &App, numbered: bool) -> Result<(), Box<dyn std::error::Error>> 
             } else {
                 "D"
             };
-            println!("{:4} {} {}({})", i, s, e.name, e.section)
+            println!("{:4} {} {}({})", i+1, s, e.name, e.section)
         } else {
             println!("{}({})", e.name, e.section)
         }
@@ -510,7 +550,7 @@ fn pile(app: &App, numbered: bool) -> Result<(), Box<dyn std::error::Error>> {
     {
         if numbered {
             let s = if e.status == Status::Reading { "R" } else { "" };
-            println!("{:4} {} {}({})", i, s, e.name, e.section)
+            println!("{:4} {} {}({})", i+1, s, e.name, e.section)
         } else {
             println!("{}({})", e.name, e.section)
         }
@@ -519,6 +559,21 @@ fn pile(app: &App, numbered: bool) -> Result<(), Box<dyn std::error::Error>> {
     if !any {
         eprintln!("Pile is empty.");
     }
+    Ok(())
+}
+
+fn unread(app: &mut App, index: usize) -> Result<(), Box<dyn std::error::Error>> {
+    let mut e = app.entries.remove(index);
+    e.unread();
+    let boundary = app
+        .entries
+        .iter()
+        .position(|e| e.status == Status::Unread)
+        .unwrap_or(app.entries.len());
+    let label = format!("{}({})", e.name, e.section);
+    app.entries.insert(boundary, e);
+    app.save_to_file()?;
+    println!("unread: {}", label);
     Ok(())
 }
 
