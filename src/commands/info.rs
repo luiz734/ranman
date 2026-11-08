@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use crate::app::{App, Status};
+use crate::Result;
 
 #[derive(Default)]
 pub struct SectionInfo {
@@ -16,7 +17,7 @@ impl Display for SectionInfo {
 }
 
 
-pub fn info(app: &App) -> Result<(), Box<dyn std::error::Error>> {
+pub fn info(app: &App) -> Result<()> {
     let mut s = String::new();
     let p = 9usize;
     s += &format!("{:p$} {}\n", "file:", app.path.as_path().to_string_lossy());

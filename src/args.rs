@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 use std::fmt;
 use crate::app::App;
-use crate::Status;
 
 #[derive(Debug, Clone)]
 pub enum ArgError {

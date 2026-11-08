@@ -1,6 +1,6 @@
 use crate::app::App;
-
-pub fn peek(app: &App) -> Result<(), Box<dyn std::error::Error>> {
+use crate::Result;
+pub fn peek(app: &App) -> Result<()> {
     let i = app
         .next_idx()
         .ok_or("no unread pages in the selected sections")?;

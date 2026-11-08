@@ -1,3 +1,4 @@
+use crate::Result;
 use crate::args::Args;
 use crate::{App, Status};
 use regex::Regex;
@@ -12,7 +13,7 @@ enum UnreadArg {
     Name(String),
 }
 
-pub fn handle_unread(app: &mut App, args: &Args) -> Result<(), Box<dyn std::error::Error>> {
+pub fn handle_unread(app: &mut App, args: &Args) -> Result<()> {
     let arg = get_arg(args)?;
     let mut indexes = vec_from_arg(app, &arg)?;
 
@@ -27,7 +28,7 @@ pub fn handle_unread(app: &mut App, args: &Args) -> Result<(), Box<dyn std::erro
     unread(app, &mut indexes)
 }
 
-fn unread(app: &mut App, indexes: &mut Vec<usize>) -> Result<(), Box<dyn std::error::Error>> {
+fn unread(app: &mut App, indexes: &mut Vec<usize>) -> Result<()> {
     // If we remove index i and j with i < j, the indexes will shift.
     // Remove larger indexes first.
     indexes.sort_by(|a, b| b.cmp(a));
@@ -48,7 +49,7 @@ fn unread(app: &mut App, indexes: &mut Vec<usize>) -> Result<(), Box<dyn std::er
     Ok(())
 }
 
-fn vec_from_arg(app: &App, arg: &UnreadArg) -> Result<Vec<usize>, Box<dyn std::error::Error>> {
+fn vec_from_arg(app: &App, arg: &UnreadArg) -> Result<Vec<usize>> {
     match arg {
         // We don't need to call unread for this
         // Keep it for consistency only
@@ -103,7 +104,7 @@ fn vec_from_arg(app: &App, arg: &UnreadArg) -> Result<Vec<usize>, Box<dyn std::e
     }
 }
 
-fn get_arg(args: &Args) -> Result<UnreadArg, Box<dyn std::error::Error>> {
+fn get_arg(args: &Args) -> Result<UnreadArg> {
     let mut provided: Vec<UnreadArg> = vec![];
 
     if args.all {
@@ -131,7 +132,7 @@ fn get_arg(args: &Args) -> Result<UnreadArg, Box<dyn std::error::Error>> {
     }
 }
 
-fn confirm_action() -> Result<(), Box<dyn std::error::Error>> {
+fn confirm_action() -> Result<()> {
     println!("This will remove ALL your reading progress.");
     print!("Do You really want to proceed? [y/N]: ");
 

@@ -1,7 +1,6 @@
 use rand::prelude::SliceRandom;
 use regex::Regex;
 use std::collections::BTreeSet;
-use std::fmt::{Display, Formatter};
 use std::fs::{DirEntry, read_to_string};
 use std::path::PathBuf;
 
@@ -20,6 +19,8 @@ use crate::commands::pile::pile;
 use crate::commands::start::start;
 use crate::commands::unread::handle_unread;
 
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+
 fn main() {
     if let Err(e) = run() {
         eprintln!("ranman: {e}");
@@ -27,7 +28,7 @@ fn main() {
     }
 }
 
-fn run() -> Result<(), Box<dyn std::error::Error>> {
+fn run() -> Result<()> {
     // This should never fail under normal conditions
     let state_path = match state_path() {
         Some(f) => f,
@@ -57,7 +58,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn process_subcommand(args: &Args, app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
+fn process_subcommand(args: &Args, app: &mut App) -> Result<()> {
     match args.cmd.as_deref() {
         None => ranman(app),
         Some("help") => help(),
@@ -154,7 +155,7 @@ fn generate(man_paths: Vec<PathBuf>, random: bool) -> Vec<Entry> {
     entries
 }
 
-fn ranman(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
+fn ranman(app: &mut App) -> Result<()> {
     if let Some(i) = app.current_idx() {
         println!("{} {}", app.entries[i].section, app.entries[i].name);
     } else {

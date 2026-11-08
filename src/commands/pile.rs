@@ -1,6 +1,6 @@
 use crate::{App, Status};
-
-pub fn pile(app: &App, numbered: bool) -> Result<(), Box<dyn std::error::Error>> {
+use crate::Result;
+pub fn pile(app: &App, numbered: bool) -> Result<()> {
     let mut any = false;
     for (i, e) in app
         .entries

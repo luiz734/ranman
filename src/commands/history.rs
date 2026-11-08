@@ -1,7 +1,8 @@
 use crate::{App};
 use crate::app::Status;
+use crate::Result;
 
-pub fn history(app: &App, numbered: bool) -> Result<(), Box<dyn std::error::Error>> {
+pub fn history(app: &App, numbered: bool) -> Result<()> {
     for (i, e) in &app
         .entries
         .iter()
