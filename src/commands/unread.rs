@@ -11,7 +11,7 @@ enum UnreadArg {
 }
 
 pub fn handle_unread(app: &mut App, args: &Args) -> Result<(), Box<dyn std::error::Error>> {
-    let arg = get_arg(app, args)?;
+    let arg = get_arg(args)?;
     let mut indexes = vec_from_arg(app, arg)?;
 
     // If we remove index i and j with i < j, the indexes will shift.
@@ -93,18 +93,14 @@ fn vec_from_arg(app: &App, arg: UnreadArg) -> Result<Vec<usize>, Box<dyn std::er
     }
 }
 
-fn get_arg(app: &mut App, args: &Args) -> Result<UnreadArg, Box<dyn std::error::Error>> {
+fn get_arg(args: &Args) -> Result<UnreadArg, Box<dyn std::error::Error>> {
     if args.all {
         confirm_action()?;
         return Ok(UnreadArg::All);
     }
 
     if let Some(n) = args.index {
-        let i = n.checked_sub(1).ok_or("indices start at 1")?;
-        return match app.entries.get(i) {
-            Some(e) if e.status != Status::Unread => Ok(UnreadArg::Index(i)),
-            _ => Err(format!("no such index: {n} (see 'ranman history -n')").into()),
-        };
+        return Ok(UnreadArg::Index(n));
     };
 
     let p = args
