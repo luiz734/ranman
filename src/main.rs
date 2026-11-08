@@ -1,227 +1,24 @@
 use rand::prelude::SliceRandom;
 use regex::Regex;
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::BTreeSet;
 use std::fmt::{Display, Formatter};
-use std::fs::{DirEntry, create_dir_all, read_to_string, rename};
-use std::io::{Error, Write};
+use std::fs::{DirEntry, read_to_string};
 use std::path::PathBuf;
-use std::{fmt, io};
 
-const APP_VERSION: &str = "1";
+mod app;
+mod args;
+mod commands;
 
-struct App {
-    path: PathBuf,
-    order: Order,
-    entries: Vec<Entry>,
-    sections: Vec<String>,
-}
-
-impl App {
-    fn save_to_file(&self) -> Result<(), Error> {
-        let mut text = String::new();
-
-        text += &format!("#ranman {}\n", APP_VERSION);
-        text += &format!("#order {}\n", self.order.to_string());
-
-        for e in &self.entries {
-            text += &format!("{} {}({})\n", e.status, e.name, e.section)
-        }
-
-        // Save to disk
-        let base_dir = self.path.as_path().parent().unwrap();
-        let tmp_file = base_dir.iter().as_path().join("list.tmp");
-
-        match create_dir_all(base_dir).and_then(|_| std::fs::write(&tmp_file, &text)) {
-            Ok(_) => {
-                rename(tmp_file, &self.path)?;
-                Ok(())
-            }
-            Err(e) => Err(e),
-        }
-    }
-
-    fn count_status(&self, status: Status) -> usize {
-        self.entries
-            .iter()
-            .filter(|e| self.selected(e))
-            .filter(|e| e.status == status)
-            .count()
-    }
-
-    fn sections_string(&self) -> String {
-        self.sections
-            .iter()
-            .fold(String::new(), |acc, s| acc + s + " ")
-            .trim()
-            .to_string()
-    }
-
-    fn next_idx(&self) -> Option<usize> {
-        self.entries
-            .iter()
-            .position(|e| e.status == Status::Unread && self.selected(e))
-    }
-
-    fn current_idx(&self) -> Option<usize> {
-        self.entries
-            .iter()
-            .rposition(|e| e.status == Status::Reading && self.selected(e))
-    }
-
-    fn selected(&self, e: &Entry) -> bool {
-        self.sections
-            .iter()
-            .any(|s| e.section.starts_with(s.as_str()))
-    }
-
-    fn generate(
-        file: PathBuf,
-        sections: Vec<String>,
-        man_paths: Vec<PathBuf>,
-        random: bool,
-    ) -> Result<App, Error> {
-        let entries = generate(man_paths, random);
-
-        let order = match random {
-            true => Order::Random,
-            false => Order::Alphabetical,
-        };
-
-        Ok(App {
-            path: file,
-            order,
-            entries,
-            sections,
-        })
-    }
-
-    fn from_text(file: PathBuf, text: String, sections: Vec<String>) -> Result<App, Error> {
-        let order = text
-            .lines()
-            .find(|line| line.starts_with("#order"))
-            .unwrap_or(&"#order random");
-        let order = match order.split_once(" ") {
-            Some(("#order", "random")) => Order::Random,
-            Some(("#order", "alphabetical")) => Order::Alphabetical,
-            _ => Order::Random,
-        };
-
-        let entries = text
-            .lines()
-            .filter(|l| !l.starts_with("#") && !l.is_empty())
-            .map(|line| {
-                let pair = line.split_once(" ").unwrap();
-
-                let status = match pair.0 {
-                    "R" => Status::Reading,
-                    "D" => Status::Done,
-                    _ => Status::Unread,
-                };
-
-                let pair = pair.1.rsplit_once("(").unwrap();
-                let name = pair.0.to_string();
-                let section = pair.1.strip_suffix(")").unwrap().to_string();
-
-                Entry {
-                    status,
-                    name,
-                    section,
-                }
-            });
-
-        Ok(App {
-            path: file,
-            order,
-            entries: entries.collect(),
-            sections,
-        })
-    }
-}
-
-#[derive(PartialEq, Eq)]
-enum Status {
-    Done,
-    Reading,
-    Unread,
-}
-
-impl Display for Status {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Status::Reading => write!(f, "R"),
-            Status::Unread => write!(f, "."),
-            Status::Done => write!(f, "D"),
-        }
-    }
-}
-
-enum Order {
-    Random,
-    Alphabetical,
-}
-
-impl Display for Order {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Order::Random => write!(f, "random"),
-            Order::Alphabetical => write!(f, "alphabetical"),
-        }
-    }
-}
-
-struct Entry {
-    status: Status,
-    name: String,
-    section: String,
-}
-
-impl Entry {
-    fn read(&mut self) {
-        self.status = Status::Reading;
-    }
-    fn unread(&mut self) {
-        self.status = Status::Unread;
-    }
-    fn done(&mut self) {
-        self.status = Status::Done;
-    }
-}
-
-#[derive(Default)]
-struct SectionInfo {
-    total: usize,
-    read: usize,
-}
-
-impl Display for SectionInfo {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{}/{}", self.read, self.total)
-    }
-}
-
-#[derive(Debug, Clone)]
-enum ArgError {
-    BadSection(String),
-}
-
-impl fmt::Display for ArgError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ArgError::BadSection(section) => write!(f, "bad section: {section}"),
-        }
-    }
-}
-impl std::error::Error for ArgError {}
-
-#[derive(Default)]
-struct Args {
-    cmd: Option<String>,
-    positional: Vec<String>,
-    numbered: bool,
-    index: Option<usize>,
-    all: bool,
-    sections: Option<Vec<String>>,
-}
+use crate::app::{App, Entry, Status};
+use crate::args::{Args, parse_args};
+use crate::commands::done::done;
+use crate::commands::help::help;
+use crate::commands::history::history;
+use crate::commands::info::info;
+use crate::commands::peek::peek;
+use crate::commands::pile::pile;
+use crate::commands::start::start;
+use crate::commands::unread::handle_unread;
 
 fn main() {
     if let Err(e) = run() {
@@ -241,7 +38,6 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let man_paths = man_paths();
-
     let sections = vec!["1".to_owned()];
 
     let mut app = match read_to_string(&state_path) {
@@ -264,7 +60,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 fn process_subcommand(args: &Args, app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     match args.cmd.as_deref() {
         None => ranman(app),
-        Some("help") => show_help(),
+        Some("help") => help(),
         Some("info") => info(app),
         Some("start") => start(app),
         Some("history") => history(app, args.numbered),
@@ -274,87 +70,6 @@ fn process_subcommand(args: &Args, app: &mut App) -> Result<(), Box<dyn std::err
         Some("done") => done(app),
         Some(_) => Err("unknown command".into()),
     }
-}
-
-fn parse_args(app: &App) -> Result<Args, Box<dyn std::error::Error>> {
-    let mut args = Args::default();
-    let mut it = std::env::args().skip(1);
-
-    while let Some(a) = it.next() {
-        match a.as_str() {
-            "--numbered" | "-n" => args.numbered = true,
-            "--all" => args.all = true,
-            "--index" | "-i" => {
-                let index = it.next().ok_or("--index needs a number")?;
-                args.index = Some(index.parse().map_err(|_| format!("bad index: {index}"))?);
-            }
-            "--sections" => {
-                let values = it.next().ok_or("usage is --sections a,b,c")?;
-                let values = values.split(",").collect::<Vec<_>>();
-                valid_sections(app, &values)?;
-                args.sections = Some(values.iter().map(|s| s.to_string()).collect());
-            }
-
-            s if s.starts_with('-') && s.len() > 1 => {
-                return Err(format!("unknown option {s}").into());
-            }
-            _ if args.cmd.is_none() => args.cmd = Some(a),
-            _ => args.positional.push(a),
-        }
-    }
-
-    Ok(args)
-}
-
-fn valid_sections(app: &App, cmd_sections: &Vec<&str>) -> Result<(), ArgError> {
-    let mut all_sections = HashSet::<&str>::new();
-    for e in app.entries.iter().map(|e| &e.section) {
-        all_sections.insert(e);
-    }
-    for s in cmd_sections {
-        if !all_sections.contains(s) {
-            return Err(ArgError::BadSection(format!(
-                "section \"{}\" is invalid",
-                s
-            )));
-        }
-    }
-    Ok(())
-}
-fn find_target(app: &mut App, args: &Args) -> Result<usize, Box<dyn std::error::Error>> {
-    match args.index {
-        Some(n) => {
-            let i = n.checked_sub(1).ok_or("indices start at 1")?;
-            match app.entries.get(i) {
-                Some(e) if e.status != Status::Unread => Ok(i),
-                _ => Err(format!("no such index: {n} (see 'ranman history -n')").into()),
-            }
-        }
-        None => {
-            if let Some(a) = args.positional.first() {
-                let (name, sec) = match a.rsplit_once('(') {
-                    Some((n, s)) => (n, s.strip_suffix(')')),
-                    None => (a.as_str(), None),
-                };
-
-                app.entries
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, e)| e.status != Status::Unread && e.name == name)
-                    .filter(|(_, e)| sec.is_none_or(|s| e.section == s))
-                    .min_by_key(|(_, e)| e.section.as_str())
-                    .map(|(i, e)| Ok(i))
-                    .ok_or_else(|| format!("not in the read list: {a}"))?
-            } else {
-                Err("remove needs a page name, --index N or --all".into())
-            }
-        }
-    }
-}
-
-fn show_help() -> Result<(), Box<dyn std::error::Error>> {
-    println!("USAGE: help");
-    Ok(())
 }
 
 fn man_paths() -> Vec<PathBuf> {
@@ -439,84 +154,6 @@ fn generate(man_paths: Vec<PathBuf>, random: bool) -> Vec<Entry> {
     entries
 }
 
-fn info(app: &App) -> Result<(), Box<dyn std::error::Error>> {
-    let mut s = String::new();
-    let p = 9usize;
-    s += &format!("{:p$} {}\n", "file:", app.path.as_path().to_string_lossy());
-    s += &format!("{:p$} {}\n", "order:", app.order);
-    s += &format!("{:p$} {}\n", "sections:", app.sections_string());
-
-    let done = app.count_status(Status::Done);
-    let reading = app.count_status(Status::Reading);
-    let unread = app.count_status(Status::Unread);
-    let total = done + reading + unread;
-    s += &format!(
-        "{:p$} {}/{} ({} done, {} reading)\n",
-        "read:",
-        done + reading,
-        total,
-        done,
-        reading
-    );
-
-    if let Some(i) = app.current_idx() {
-        s += &format!(
-            "{:p$} {}({})\n",
-            "current:", app.entries[i].name, app.entries[i].section
-        );
-    } else {
-        s += &format!("{:p$} -\n", "current:");
-    }
-
-    if let Some(i) = app.next_idx() {
-        s += &format!(
-            "{:p$} {}({})\n",
-            "next:", app.entries[i].name, app.entries[i].section
-        );
-    } else {
-        s += &format!("{:p$} -\n", "next:");
-    }
-
-    let mut by_section: BTreeMap<&str, SectionInfo> = BTreeMap::new();
-    for e in &app.entries {
-        let s = by_section.entry(e.section.as_str()).or_default();
-        s.total += 1;
-        if e.status != Status::Unread {
-            s.read += 1;
-        }
-    }
-
-    s += "by section (* = selected):\n";
-    for (k, v) in by_section {
-        s += &format!("  {:6} {}\n", k, v)
-    }
-
-    print!("{}", s);
-
-    Ok(())
-}
-
-fn start(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
-    let i = app
-        .next_idx()
-        .ok_or("no unread pages in the selected sections")?;
-    let mut e = app.entries.remove(i);
-    e.read();
-    let boundary = app
-        .entries
-        .iter()
-        .position(|e| e.status == Status::Unread)
-        .unwrap_or(app.entries.len());
-    println!("{} {}", e.section, e.name);
-    app.entries.insert(boundary, e);
-    Ok(app.save_to_file()?)
-}
-fn done(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
-    let i = app.current_idx().ok_or("nothing in progress")?;
-    app.entries[i].done();
-    Ok(app.save_to_file()?)
-}
-
 fn ranman(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     if let Some(i) = app.current_idx() {
         println!("{} {}", app.entries[i].section, app.entries[i].name);
@@ -527,111 +164,6 @@ fn ranman(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         } else {
             return Err("no unread pages in the selected sections".into());
         }
-    }
-    Ok(())
-}
-
-fn history(app: &App, numbered: bool) -> Result<(), Box<dyn std::error::Error>> {
-    for (i, e) in &app
-        .entries
-        .iter()
-        .enumerate()
-        .filter(|(_, e)| e.status != Status::Unread)
-        .rev()
-        .collect::<Vec<_>>()
-    {
-        if numbered {
-            let s = if e.status == Status::Reading {
-                "R"
-            } else {
-                "D"
-            };
-            println!("{:4} {} {}({})", i + 1, s, e.name, e.section)
-        } else {
-            println!("{}({})", e.name, e.section)
-        }
-    }
-    Ok(())
-}
-
-fn peek(app: &App) -> Result<(), Box<dyn std::error::Error>> {
-    let i = app
-        .next_idx()
-        .ok_or("no unread pages in the selected sections")?;
-    println!("{} {}", app.entries[i].section, app.entries[i].name);
-    Ok(())
-}
-
-fn pile(app: &App, numbered: bool) -> Result<(), Box<dyn std::error::Error>> {
-    let mut any = false;
-    for (i, e) in app
-        .entries
-        .iter()
-        .enumerate()
-        .rev()
-        .filter(|(_, e)| e.status == Status::Reading)
-    {
-        if numbered {
-            let s = if e.status == Status::Reading { "R" } else { "" };
-            println!("{:4} {} {}({})", i + 1, s, e.name, e.section)
-        } else {
-            println!("{}({})", e.name, e.section)
-        }
-        any = true;
-    }
-    if !any {
-        eprintln!("Pile is empty.");
-    }
-    Ok(())
-}
-
-fn handle_unread(app: &mut App, args: &Args) -> Result<(), Box<dyn std::error::Error>> {
-    let mut indexes: Vec<usize> = match args.all {
-        true => {
-            print!(
-                "This will remove ALL your reading progress.\nDo You really want to proceed? [y/N]: "
-            );
-            io::stdout().flush()?;
-
-            let mut input = String::new();
-            io::stdin().read_line(&mut input)?;
-
-            match input.trim() {
-                "yes" | "Y" | "y" => app
-                    .entries
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, e)| e.status != Status::Unread)
-                    .map(|(i, _)| i)
-                    .collect::<Vec<usize>>(),
-                _ => return Err("Canceled by user".to_string().into()),
-            }
-        }
-        false => vec![find_target(app, args)?],
-    };
-    // If we remove index I < J before the indexes will shift.
-    // Remove larger indexes first.
-    indexes.sort();
-    indexes.reverse();
-    unread(app, indexes)
-}
-
-fn unread(app: &mut App, indexes: Vec<usize>) -> Result<(), Box<dyn std::error::Error>> {
-    if !indexes.is_sorted_by(|a, b| a > b) {
-        return Err("Indexes are unsorted (not user fault).".into());
-    }
-    for index in indexes {
-        let mut e = app.entries.remove(index);
-        e.unread();
-        let boundary = app
-            .entries
-            .iter()
-            .position(|e| e.status == Status::Unread)
-            .unwrap_or(app.entries.len());
-        let label = format!("{}({})", e.name, e.section);
-        app.entries.insert(boundary, e);
-        app.save_to_file()?;
-        println!("unread: {}", label);
     }
     Ok(())
 }
