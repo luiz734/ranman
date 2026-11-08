@@ -263,7 +263,7 @@ fn process_subcommand(args: &Args, app: &mut App) -> Result<(), Box<dyn std::err
         Some("start") => start(app),
         Some("history") => history(app, args.numbered),
         Some("peek") => peek(app),
-        Some("pile") => pile(app),
+        Some("pile") => pile(app, args.numbered),
         Some("done") => done(app),
         Some(_) => Err("unknown command".into()),
         _ => Err("unknown command".into()),
@@ -478,7 +478,11 @@ fn history(app: &App, numbered: bool) -> Result<(), Box<dyn std::error::Error>> 
         .collect::<Vec<_>>()
     {
         if numbered {
-            let s = if e.status == Status::Reading { "R" } else { "D" };
+            let s = if e.status == Status::Reading {
+                "R"
+            } else {
+                "D"
+            };
             println!("{:4} {} {}({})", i, s, e.name, e.section)
         } else {
             println!("{}({})", e.name, e.section)
@@ -495,15 +499,21 @@ fn peek(app: &App) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn pile(app: &App) -> Result<(), Box<dyn std::error::Error>> {
+fn pile(app: &App, numbered: bool) -> Result<(), Box<dyn std::error::Error>> {
     let mut any = false;
-    for e in app
+    for (i, e) in app
         .entries
         .iter()
+        .enumerate()
         .rev()
-        .filter(|e| e.status == Status::Reading)
+        .filter(|(_, e)| e.status == Status::Reading)
     {
-        println!("{}({})", e.name, e.section);
+        if numbered {
+            let s = if e.status == Status::Reading { "R" } else { "" };
+            println!("{:4} {} {}({})", i, s, e.name, e.section)
+        } else {
+            println!("{}({})", e.name, e.section)
+        }
         any = true;
     }
     if !any {
