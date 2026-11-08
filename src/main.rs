@@ -187,18 +187,6 @@ impl Entry {
     }
 }
 
-#[derive(Debug, Clone)]
-enum ParsingError {
-    EmptyLine,
-}
-impl Display for ParsingError {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        match self {
-            ParsingError::EmptyLine => write!(f, "State file contains empty line"),
-        }
-    }
-}
-
 #[derive(Default)]
 struct SectionInfo {
     total: usize,
@@ -260,6 +248,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
 fn process_subcommand(args: &Args, app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     match args.cmd.as_deref() {
+        None => ranman(app),
         Some("help") => show_help(),
         Some("info") => info(app),
         Some("start") => start(app),
@@ -498,7 +487,7 @@ fn ranman(app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
         println!("{} {}", app.entries[i].section, app.entries[i].name);
     } else {
         if let Some(i) = app.next_idx() {
-            print!("{} {}", app.entries[i].section, app.entries[i].name);
+            println!("{} {}", app.entries[i].section, app.entries[i].name);
             eprintln!("not started; run 'ranman start' to mark it as reading");
         } else {
             return Err("no unread pages in the selected sections".into());
