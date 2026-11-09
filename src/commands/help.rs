@@ -26,8 +26,8 @@ COMMANDS:
   pile                pages still in progress        [-n|--numbered]
   start               mark the next unread page of the selected sections as reading and print it;
                       random by default, but accepts [--sorted]
-  unread  [count|name]
-                      mark page as unread
+  [un]read  [count|name|options]
+                      mark page as read or unread
                         [--all]            see options
                         [-i|--index] N     see options
                         [count]            target COUNT from top

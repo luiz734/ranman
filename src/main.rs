@@ -17,7 +17,7 @@ use crate::commands::info::info;
 use crate::commands::peek::peek;
 use crate::commands::pile::pile;
 use crate::commands::start::start;
-use crate::commands::unread::handle_unread;
+use crate::commands::un_read::{Action, read_or_unread};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -70,7 +70,8 @@ fn process_subcommand(args: &Args, app: &mut App) -> Result<()> {
         Some("history") => history(app, args.numbered),
         Some("peek") => peek(app),
         Some("pile") => pile(app, args.numbered),
-        Some("unread") => handle_unread(app, args),
+        Some("read") => read_or_unread(app, args, Action::Read),
+        Some("unread") => read_or_unread(app, args, Action::Unread),
         Some("done") => done(app),
         Some(_) => Err("unknown command".into()),
     }

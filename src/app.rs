@@ -106,7 +106,7 @@ impl App {
             .rposition(|e| e.status == Status::Reading && self.selected(e))
     }
 
-    fn selected(&self, e: &Entry) -> bool {
+    pub fn selected(&self, e: &Entry) -> bool {
         self.sections
             .iter()
             .any(|s| e.section.starts_with(s.as_str()))
