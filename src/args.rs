@@ -1,6 +1,6 @@
+use crate::app::App;
 use std::collections::HashSet;
 use std::fmt;
-use crate::app::App;
 
 #[derive(Debug, Clone)]
 pub enum ArgError {
@@ -23,11 +23,11 @@ pub struct Args {
     pub(crate) numbered: bool,
     pub(crate) index: Option<usize>,
     pub(crate) all: bool,
-    sections: Option<Vec<String>>,
+    pub(crate) sorted: bool,
+    pub(crate) sections: Option<Vec<String>>,
 }
 
-
-pub(crate) fn parse_args(app: &App) -> Result<Args, Box<dyn std::error::Error>> {
+pub(crate) fn parse_args() -> Result<Args, Box<dyn std::error::Error>> {
     let mut args = Args::default();
     let mut it = std::env::args().skip(1);
 
@@ -41,9 +41,12 @@ pub(crate) fn parse_args(app: &App) -> Result<Args, Box<dyn std::error::Error>> 
             }
             "--sections" => {
                 let values = it.next().ok_or("usage is --sections a,b,c")?;
-                let values = values.split(",").collect();
-                valid_sections(app, &values)?;
+                let values = values.split(",").collect::<Vec<_>>();
+                // valid_sections(app, &values)?;
                 args.sections = Some(values.iter().map(|s| s.to_string()).collect());
+            }
+            "--sorted" => {
+                args.sorted = true;
             }
 
             s if s.starts_with('-') && s.len() > 1 => {
@@ -57,13 +60,17 @@ pub(crate) fn parse_args(app: &App) -> Result<Args, Box<dyn std::error::Error>> 
     Ok(args)
 }
 
-fn valid_sections(app: &App, cmd_sections: &Vec<&str>) -> Result<(), ArgError> {
+pub fn valid_sections(app: &App, cmd_sections: &Option<Vec<String>>) -> Result<(), ArgError> {
+    // TODO: refactor
+    // Only check if --section was provided
+    let Some(_) = cmd_sections else { return Ok(()) };
+
     let mut all_sections = HashSet::<&str>::new();
     for e in app.entries.iter().map(|e| &e.section) {
         all_sections.insert(e);
     }
-    for s in cmd_sections {
-        if !all_sections.contains(s) {
+    for s in cmd_sections.as_ref().unwrap() {
+        if !all_sections.contains(s.as_str()) {
             return Err(ArgError::BadSection(format!(
                 "section \"{}\" is invalid",
                 s

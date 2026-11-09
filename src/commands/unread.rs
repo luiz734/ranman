@@ -74,7 +74,7 @@ fn vec_from_arg(app: &App, arg: &UnreadArg) -> Result<Vec<usize>> {
             .collect()),
 
         UnreadArg::Name(a) => {
-            let re = Regex::new(r"([\w\-_:.]+)(\(\w+\))?")?;
+            let re = Regex::new(r"([\w\-_:.\[]+)(\(\w+\))?")?;
             let caps = re.captures(a).ok_or("no match")?;
 
             let name = caps.get(1).map_or(Some(a.as_str()), |m| Some(m.as_str()));

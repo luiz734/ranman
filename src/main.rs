@@ -9,7 +9,7 @@ mod args;
 mod commands;
 
 use crate::app::{App, Entry, Status};
-use crate::args::{Args, parse_args};
+use crate::args::{Args, parse_args, valid_sections};
 use crate::commands::done::done;
 use crate::commands::help::help;
 use crate::commands::history::history;
@@ -41,19 +41,22 @@ fn run() -> Result<()> {
     let man_paths = man_paths();
     let sections = vec!["1".to_owned()];
 
+    let args = parse_args()?;
+
     let mut app = match read_to_string(&state_path) {
         Ok(t) => App::from_text(state_path, t, sections)?,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            App::generate(state_path, sections, man_paths, true)?
+            App::generate(state_path, sections, man_paths, args.sorted)?
         }
         Err(e) => {
             return Err(e.into());
         }
     };
+    valid_sections(&app, &args.sections)?;
+
     // Redundant when just read
     app.save_to_file()?;
 
-    let args = parse_args(&app)?;
     process_subcommand(&args, &mut app)?;
     Ok(())
 }
@@ -98,7 +101,7 @@ fn man_paths() -> Vec<PathBuf> {
     paths
 }
 
-fn generate(man_paths: Vec<PathBuf>, random: bool) -> Vec<Entry> {
+fn generate(man_paths: Vec<PathBuf>, sorted: bool) -> Vec<Entry> {
     let mut tree: BTreeSet<String> = BTreeSet::new();
 
     let re = Regex::new(r"man\d+$").unwrap();
@@ -148,7 +151,9 @@ fn generate(man_paths: Vec<PathBuf>, random: bool) -> Vec<Entry> {
         }
     }
 
-    if random {
+    if sorted {
+        entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    } else {
         entries.shuffle(&mut rand::rng())
     }
 

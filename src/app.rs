@@ -116,13 +116,13 @@ impl App {
         file: PathBuf,
         sections: Vec<String>,
         man_paths: Vec<PathBuf>,
-        random: bool,
+        sorted: bool,
     ) -> Result<App, Error> {
-        let entries = generate(man_paths, random);
+        let entries = generate(man_paths, sorted);
 
-        let order = match random {
-            true => Order::Random,
-            false => Order::Alphabetical,
+        let order = match sorted {
+            true => Order::Alphabetical,
+            false => Order::Random,
         };
 
         Ok(App {
@@ -133,7 +133,11 @@ impl App {
         })
     }
 
-    pub(crate) fn from_text(file: PathBuf, text: String, sections: Vec<String>) -> Result<App, Error> {
+    pub(crate) fn from_text(
+        file: PathBuf,
+        text: String,
+        sections: Vec<String>,
+    ) -> Result<App, Error> {
         let order = text
             .lines()
             .find(|line| line.starts_with("#order"))

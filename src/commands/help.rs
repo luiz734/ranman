@@ -24,7 +24,8 @@ COMMANDS:
   history             read pages, newest first       [-n|--numbered]
   peek                peek at the next unread page, without consuming it
   pile                pages still in progress        [-n|--numbered]
-  start               mark the next unread page of the selected sections as reading and print it
+  start               mark the next unread page of the selected sections as reading and print it;
+                      random by default, but accepts [--sorted]
   unread  [count|name]
                       mark page as unread
                         [--all]            see options
@@ -35,4 +36,5 @@ OPTIONS:
   --all               all valid targets for that context
   -i, --index N       target at the given index
   -n, --numbered      numbered output
-  -s, --sections S... sections to pick from: --sections 1,3,8; defaults to 1"#;
+  -s, --sections S... sections to pick from: --sections 1,3,8; defaults to 1
+  --sorted            sort the entries; can only be used with start and update"#;
