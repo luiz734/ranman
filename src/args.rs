@@ -16,7 +16,6 @@ impl fmt::Display for ArgError {
 }
 impl std::error::Error for ArgError {}
 
-#[derive(Default)]
 pub struct Args {
     pub(crate) cmd: Option<String>,
     pub(crate) positional: Vec<String>,
@@ -24,7 +23,25 @@ pub struct Args {
     pub(crate) index: Option<usize>,
     pub(crate) all: bool,
     pub(crate) sorted: bool,
+    pub(crate) keep_progress: bool,
+    pub(crate) prune: bool,
     pub(crate) sections: Option<Vec<String>>,
+}
+
+impl Default for Args {
+    fn default() -> Self {
+        Self {
+            cmd: None,
+            positional: vec![],
+            numbered: false,
+            index: None,
+            all: false,
+            sorted: false,
+            keep_progress: true,
+            prune: false,
+            sections: Some(vec!["1".into()]),
+        }
+    }
 }
 
 pub(crate) fn parse_args() -> Result<Args, Box<dyn std::error::Error>> {
@@ -47,11 +64,29 @@ pub(crate) fn parse_args() -> Result<Args, Box<dyn std::error::Error>> {
             }
             "--sorted" => {
                 if let Some(cmd) = &args.cmd
-                    && (cmd == "start" || cmd == "update")
+                    && (cmd == "start" || cmd == "rescan")
                 {
                     args.sorted = true;
                 } else {
-                    return Err(("--sorted can only be used with start or update").into());
+                    return Err(("--sorted can only be used with start or rescan").into());
+                }
+            }
+            "--delete-progress" => {
+                if let Some(cmd) = &args.cmd
+                    && (cmd == "rescan")
+                {
+                    args.keep_progress = false;
+                } else {
+                    return Err(("--delete-progress can only be used with rescan").into());
+                }
+            }
+            "--prune" => {
+                if let Some(cmd) = &args.cmd
+                    && (cmd == "rescan")
+                {
+                    args.prune = true;
+                } else {
+                    return Err(("--prune can only be used with rescan").into());
                 }
             }
 

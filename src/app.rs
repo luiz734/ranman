@@ -22,6 +22,7 @@ impl Display for Order {
     }
 }
 
+#[derive(Clone)]
 pub struct Entry {
     pub status: Status,
     pub name: String,
@@ -180,7 +181,7 @@ impl App {
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone)]
 pub enum Status {
     Done,
     Reading,

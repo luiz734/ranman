@@ -16,6 +16,7 @@ use crate::commands::history::history;
 use crate::commands::info::info;
 use crate::commands::peek::peek;
 use crate::commands::pile::pile;
+use crate::commands::rescan::rescan;
 use crate::commands::start::start;
 use crate::commands::un_read::{Action, read_or_unread};
 
@@ -71,6 +72,7 @@ fn process_subcommand(args: &Args, app: &mut App) -> Result<()> {
         Some("peek") => peek(app),
         Some("pile") => pile(app, args.numbered),
         Some("read") => read_or_unread(app, args, Action::Read),
+        Some("rescan") => rescan(app, args),
         Some("unread") => read_or_unread(app, args, Action::Unread),
         Some("done") => done(app),
         Some(_) => Err("unknown command".into()),
