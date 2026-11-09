@@ -20,7 +20,7 @@ pub(crate) fn rescan(app: &mut App, args: &Args) -> Result<()> {
     Ok(())
 }
 
-fn key(e: &Entry) -> (&str, &str) {
+pub(crate) fn key(e: &Entry) -> (&str, &str) {
     (&e.name, &e.section)
 }
 
@@ -66,7 +66,7 @@ fn place_new_entries(old: &mut Vec<Entry>, additions: Vec<Entry>, sorted: bool) 
 
     if sorted {
         old.extend(additions);
-        old[boundary..].sort_by(|a, b| key(a).cmp(&key(b)));
+        old[boundary..].sort();
     } else {
         let mut rng = rand::rng();
         for e in additions {

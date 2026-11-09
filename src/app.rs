@@ -1,4 +1,5 @@
 use crate::generate;
+use std::cmp::Ordering;
 use std::fmt::{Display, Formatter};
 use std::fs::{create_dir_all, rename};
 use std::io::Error;
@@ -43,6 +44,34 @@ impl Entry {
         self.status != Status::Unread
     }
 }
+
+fn lower(s: &str) -> impl Iterator<Item = char> + '_ {
+    s.chars().flat_map(char::to_lowercase)
+}
+
+impl Ord for Entry {
+    fn cmp(&self, other: &Self) -> Ordering {
+        lower(&self.name)
+            .cmp(lower(&other.name))
+            .then_with(|| lower(&self.section).cmp(lower(&other.section)))
+            .then_with(|| self.name.cmp(&other.name))
+            .then_with(|| self.section.cmp(&other.section))
+    }
+}
+
+impl PartialOrd for Entry {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for Entry {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == Ordering::Equal
+    }
+}
+
+impl Eq for Entry {}
 
 pub struct App {
     pub path: PathBuf,
@@ -107,7 +136,7 @@ impl App {
             .rposition(|e| e.status == Status::Reading && self.selected(e))
     }
 
-    pub fn selected(&self, e: &Entry) -> bool {
+    pub(crate) fn selected(&self, e: &Entry) -> bool {
         self.sections
             .iter()
             .any(|s| e.section.starts_with(s.as_str()))

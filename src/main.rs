@@ -155,7 +155,7 @@ fn generate(man_paths: Vec<PathBuf>, sorted: bool) -> Vec<Entry> {
     }
 
     if sorted {
-        entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        entries.sort();
     } else {
         entries.shuffle(&mut rand::rng())
     }
