@@ -25,6 +25,7 @@ pub struct Args {
     pub(crate) sorted: bool,
     pub(crate) keep_progress: bool,
     pub(crate) prune: bool,
+    pub(crate) update_unread: bool,
     pub(crate) sections: Option<Vec<String>>,
 }
 
@@ -39,6 +40,7 @@ impl Default for Args {
             sorted: false,
             keep_progress: true,
             prune: false,
+            update_unread: false,
             sections: Some(vec!["1".into()]),
         }
     }
@@ -87,6 +89,15 @@ pub(crate) fn parse_args() -> Result<Args, Box<dyn std::error::Error>> {
                     args.prune = true;
                 } else {
                     return Err(("--prune can only be used with rescan").into());
+                }
+            },
+            "--update-unread" => {
+                if let Some(cmd) = &args.cmd
+                    && (cmd == "rescan")
+                {
+                    args.update_unread = true;
+                } else {
+                    return Err(("--update-unread can only be used with rescan").into());
                 }
             }
 

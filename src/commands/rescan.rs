@@ -1,15 +1,21 @@
 use crate::app::{App, Entry, Status};
 use crate::args::Args;
 use crate::{Result, generate, man_paths};
-use rand::RngExt;
+use rand::prelude::SliceRandom;
 use std::collections::HashSet;
 
 pub(crate) fn rescan(app: &mut App, args: &Args) -> Result<()> {
     let scanned = generate(man_paths(), args.sorted);
 
     let old = std::mem::take(&mut app.entries);
-    let (entries, added, removed) =
-        combine(old, scanned, args.keep_progress, args.prune, args.sorted);
+    let (entries, added, removed) = combine(
+        old,
+        scanned,
+        args.keep_progress,
+        args.prune,
+        args.sorted,
+        args.update_unread,
+    );
     app.entries = entries;
 
     app.save_to_file()?;
@@ -30,6 +36,7 @@ fn combine(
     keep_progress: bool,
     prune: bool,
     sorted: bool,
+    update_unread: bool,
 ) -> (Vec<Entry>, usize, usize) {
     let mut removed = 0;
 
@@ -54,24 +61,38 @@ fn combine(
     };
 
     let added = additions.len();
-    place_new_entries(&mut old, additions, sorted);
+    place_new_entries(&mut old, additions, sorted, update_unread);
+
     (old, added, removed)
 }
 
-fn place_new_entries(old: &mut Vec<Entry>, additions: Vec<Entry>, sorted: bool) {
-    let boundary = old
-        .iter()
-        .position(|e| e.status == Status::Unread)
-        .unwrap_or(old.len());
+fn place_new_entries(
+    old: &mut Vec<Entry>,
+    mut additions: Vec<Entry>,
+    sorted: bool,
+    update_unread: bool,
+) {
+    if additions.is_empty() && !update_unread {
+        return;
+    }
 
-    if sorted {
+    if update_unread {
+        let boundary = old
+            .iter()
+            .position(|e| e.status == Status::Unread)
+            .unwrap_or(old.len());
         old.extend(additions);
-        old[boundary..].sort();
+        reorder(&mut old[boundary..], sorted);
     } else {
-        let mut rng = rand::rng();
-        for e in additions {
-            let at = rng.random_range(boundary..=old.len());
-            old.insert(at, e);
-        }
+        reorder(&mut additions, sorted);
+        old.extend(additions);
+    }
+}
+
+fn reorder(entries: &mut [Entry], sorted: bool) {
+    if sorted {
+        entries.sort_unstable();
+    } else {
+        entries.shuffle(&mut rand::rng());
     }
 }

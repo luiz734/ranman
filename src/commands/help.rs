@@ -51,6 +51,7 @@ Commands:
                         --delete-progress       mark all entries as [U]nread
                         --prune                 remove dangling entries
                         --sorted                pages will be sorted
+                        --update-unread         also applies sorting to unread pages
   start               mark the next unread page of the selected sections as
                       reading and print it
                         stdout: the new [R]ead page
