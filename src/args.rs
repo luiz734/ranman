@@ -46,7 +46,13 @@ pub(crate) fn parse_args() -> Result<Args, Box<dyn std::error::Error>> {
                 args.sections = Some(values.iter().map(|s| s.to_string()).collect());
             }
             "--sorted" => {
-                args.sorted = true;
+                if let Some(cmd) = &args.cmd
+                    && (cmd == "start" || cmd == "update")
+                {
+                    args.sorted = true;
+                } else {
+                    return Err(("--sorted can only be used with start or update").into());
+                }
             }
 
             s if s.starts_with('-') && s.len() > 1 => {
