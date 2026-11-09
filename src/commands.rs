@@ -4,6 +4,7 @@ pub mod history;
 pub mod info;
 pub mod peek;
 pub mod pile;
+pub mod ranman;
+pub mod rescan;
 pub mod start;
 pub mod un_read;
-pub mod rescan;

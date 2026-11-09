@@ -1,4 +1,4 @@
-use crate::{App, Status, Result};
+use crate::{App, Result, Status};
 
 pub(crate) fn pile(app: &App, numbered: bool) -> Result<()> {
     let mut any = false;
@@ -18,7 +18,7 @@ pub(crate) fn pile(app: &App, numbered: bool) -> Result<()> {
         any = true;
     }
     if !any {
-        eprintln!("Pile is empty.");
+        return Err("pile is empty".into());
     }
     Ok(())
 }

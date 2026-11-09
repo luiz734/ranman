@@ -16,6 +16,7 @@ use crate::commands::history::history;
 use crate::commands::info::info;
 use crate::commands::peek::peek;
 use crate::commands::pile::pile;
+use crate::commands::ranman::ranman;
 use crate::commands::rescan::rescan;
 use crate::commands::start::start;
 use crate::commands::un_read::{Action, read_or_unread};
@@ -163,19 +164,6 @@ fn generate(man_paths: Vec<PathBuf>, sorted: bool) -> Vec<Entry> {
     entries
 }
 
-fn ranman(app: &mut App) -> Result<()> {
-    if let Some(i) = app.current_idx() {
-        println!("{} {}", app.entries[i].section, app.entries[i].name);
-    } else {
-        if let Some(i) = app.next_idx() {
-            println!("{} {}", app.entries[i].section, app.entries[i].name);
-            eprintln!("not started; run 'ranman start' to mark it as reading");
-        } else {
-            return Err("no unread pages in the selected sections".into());
-        }
-    }
-    Ok(())
-}
 
 fn state_path() -> Option<PathBuf> {
     if let Some(config_env) = std::env::var_os("RANMAN_FILE") {
